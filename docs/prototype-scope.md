@@ -4,6 +4,8 @@ Status: Confirmed by the user on 2026-09-03. This document authorizes no formal 
 
 Validated finding: The user accepted the source-failure state model on 2026-09-03 after an interactive throwaway prototype. The artifact remains on branch `prototype/source-failure-state` at commit `360d6a9`; this validates state transitions, not real SQLite or Suwayomi integration.
 
+Validated finding: The pinned Suwayomi `v2.3.2243` JAR passed digest verification, reached GraphQL readiness, exposed extension-management operations, rejected an occupied port before startup, and released its port after controlled termination. The executable probe remains on branch `prototype/suwayomi-integration` at commit `4416fd3`. Windows application-level graceful shutdown of Suwayomi and H2 remains unverified.
+
 ## Goal
 
 Prove that a local browser client can browse comics through dynamically managed source-code modules while keeping the user's library and reading state independent from any single module or remote provider.
@@ -117,7 +119,8 @@ Optional live smoke check:
 
 - Exact REST resources and error schema.
 - Runtime validation library and final SQLite table design.
-- Exact Suwayomi command-line/configuration mechanism and readiness endpoint.
+- Windows-specific graceful Suwayomi/H2 shutdown mechanism.
+- Exact extension-store mutation inputs and compatible extension installation flow.
 - Exact fixed title or chapter for the optional live smoke check.
 
 These choices may be settled during a throwaway prototype only if they do not widen the scope above.
