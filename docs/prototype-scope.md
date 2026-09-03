@@ -2,6 +2,8 @@
 
 Status: Confirmed by the user on 2026-09-03. This document authorizes no formal product implementation.
 
+Validated finding: The user accepted the source-failure state model on 2026-09-03 after an interactive throwaway prototype. The artifact remains on branch `prototype/source-failure-state` at commit `360d6a9`; this validates state transitions, not real SQLite or Suwayomi integration.
+
 ## Goal
 
 Prove that a local browser client can browse comics through dynamically managed source-code modules while keeping the user's library and reading state independent from any single module or remote provider.

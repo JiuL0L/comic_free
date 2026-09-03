@@ -8,7 +8,8 @@ Status: PARTIALLY VERIFIED
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
 - Repository: Local Git repository with no remote configured.
 - Branch: `main`
-- Architecture and prototype scope: Confirmed by the user on 2026-09-03; implementation has not started.
+- Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation has not started.
+- Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
 
 ## Planned entrypoints
 
@@ -54,6 +55,8 @@ Page images return through `Comic Provider -> Mihon Source Plugin -> Suwayomi ->
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.
 - Candidate lifecycle source: `MANGA Plus Creators by SHUEISHA`; used to exercise install and disable behavior, with current local reachability still UNVERIFIED.
 - Live-provider smoke checks are optional and cannot fail the local architecture solely because of network, region, licensing, or upstream changes.
+- Source-failure state model: VALIDATED by direct reducer execution, Chrome walkthrough, and user acceptance on 2026-09-03.
+- Real SQLite persistence, Suwayomi process management, Mihon extension loading, and REST integration: UNVERIFIED.
 
 ## Uncertainty
 
