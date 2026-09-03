@@ -11,6 +11,7 @@ Status: PARTIALLY VERIFIED
 - Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation has not started.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
 - Validated Suwayomi integration prototype: branch `prototype/suwayomi-integration`, commit `4416fd3`; executable probe code is intentionally absent from `main`.
+- Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 
 ## Planned entrypoints
 
@@ -58,12 +59,16 @@ Page images return through `Comic Provider -> Mihon Source Plugin -> Suwayomi ->
 - Live-provider smoke checks are optional and cannot fail the local architecture solely because of network, region, licensing, or upstream changes.
 - Source-failure state model: VALIDATED by direct reducer execution, Chrome walkthrough, and user acceptance on 2026-09-03.
 - Suwayomi `v2.3.2243` startup, GraphQL readiness, extension API surface, occupied-port rejection, controlled process termination, and port release: VALIDATED on 2026-09-03 by prototype commit `4416fd3`.
+- Dynamic Keiyoushi store addition, MANGA Plus extension installation, source enumeration, and restart retention: VALIDATED on 2026-09-03 by prototype commit `3ba7eb8`.
+- A failed store refresh can collapse Suwayomi's catalog to installed entries and mark an installed extension obsolete: OBSERVED; Comic Free requires a Last Known Catalog and refresh-failure state.
+- MANGA Plus live catalog access through the installed extension: FAILED in SEARCH, POPULAR, and LATEST modes despite direct provider API reachability; details, chapters, pages, and image proxying remain UNVERIFIED.
 - Windows application-level graceful Suwayomi/H2 shutdown: UNVERIFIED; `child.kill("SIGTERM")` is not sufficient evidence of a database-safe shutdown.
-- Real Mihon extension loading, Comic Free SQLite persistence, and REST integration: UNVERIFIED.
+- Comic Free SQLite persistence and REST integration: UNVERIFIED.
 
 ## Uncertainty
 
 - Exact REST resources, validation library, and persistence schema.
 - Windows-specific graceful Suwayomi/H2 shutdown mechanism.
-- Exact extension-store mutation inputs and compatible extension installation flow.
+- Whether MANGA Plus's current extension failure is caused by Suwayomi compatibility, Java networking, or provider request semantics.
+- Which alternate compatible extension should be used for the optional live smoke check if MANGA Plus remains unusable.
 - Which fixed public title or chapter should be used for the optional live smoke check.

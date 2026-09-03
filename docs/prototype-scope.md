@@ -6,6 +6,8 @@ Validated finding: The user accepted the source-failure state model on 2026-09-0
 
 Validated finding: The pinned Suwayomi `v2.3.2243` JAR passed digest verification, reached GraphQL readiness, exposed extension-management operations, rejected an occupied port before startup, and released its port after controlled termination. The executable probe remains on branch `prototype/suwayomi-integration` at commit `4416fd3`. Windows application-level graceful shutdown of Suwayomi and H2 remains unverified.
 
+Validated finding: Suwayomi dynamically added the current Keiyoushi protobuf store, installed `MANGA Plus by SHUEISHA 1.6.65`, exposed nine language sources, and retained the installation across restart. The executable probe remains on branch `prototype/mihon-extension-flow` at commit `3ba7eb8`. Live MANGA Plus browsing did not pass: SEARCH, POPULAR, and LATEST all returned the extension's generic error despite direct provider API reachability. A failed store refresh also marked the retained extension obsolete, so Comic Free must preserve a Last Known Catalog and distinguish refresh failure from confirmed removal.
+
 ## Goal
 
 Prove that a local browser client can browse comics through dynamically managed source-code modules while keeping the user's library and reading state independent from any single module or remote provider.
@@ -120,7 +122,8 @@ Optional live smoke check:
 - Exact REST resources and error schema.
 - Runtime validation library and final SQLite table design.
 - Windows-specific graceful Suwayomi/H2 shutdown mechanism.
-- Exact extension-store mutation inputs and compatible extension installation flow.
+- Root cause of the current MANGA Plus extension failure under Suwayomi.
+- Alternate extension for the optional live smoke check if MANGA Plus remains unusable.
 - Exact fixed title or chapter for the optional live smoke check.
 
 These choices may be settled during a throwaway prototype only if they do not widen the scope above.
