@@ -4,6 +4,8 @@ Status: Confirmed by the user on 2026-09-03. This document authorizes no formal 
 
 Validated finding: The user accepted the source-failure state model on 2026-09-03 after an interactive throwaway prototype. The artifact remains on branch `prototype/source-failure-state` at commit `360d6a9`; this validates state transitions, not real SQLite or Suwayomi integration.
 
+Validated finding: MangaDex `1.4.212` was dynamically installed through Suwayomi and completed live search, details, chapter discovery, and page URL discovery on 2026-09-03. The artifact remains on branch `prototype/mangadex-live-flow` at commit `1099106`; this validates traversal through page URLs, not actual image-byte proxying, SQLite persistence, or browser rendering.
+
 Validated finding: The pinned Suwayomi `v2.3.2243` JAR passed digest verification, reached GraphQL readiness, exposed extension-management operations, rejected an occupied port before startup, and released its port after controlled termination. The executable probe remains on branch `prototype/suwayomi-integration` at commit `4416fd3`. Windows application-level graceful shutdown of Suwayomi and H2 remains unverified.
 
 Validated finding: Suwayomi dynamically added the current Keiyoushi protobuf store, installed `MANGA Plus by SHUEISHA 1.6.65`, exposed nine language sources, and retained the installation across restart. The executable probe remains on branch `prototype/mihon-extension-flow` at commit `3ba7eb8`. Live MANGA Plus browsing did not pass: SEARCH, POPULAR, and LATEST all returned the extension's generic error despite direct provider API reachability. A failed store refresh also marked the retained extension obsolete, so Comic Free must preserve a Last Known Catalog and distinguish refresh failure from confirmed removal.
@@ -105,6 +107,7 @@ Optional live smoke check:
 
 - Try `MANGA Plus by SHUEISHA` for real search and reading flow.
 - Try `MANGA Plus Creators by SHUEISHA` for extension lifecycle behavior.
+- Use MangaDex as the currently validated alternate provider path; pin a stable public title and chapter before treating the live smoke check as repeatable.
 - Network, region, licensing, removed titles, or upstream changes are reported separately and do not alone invalidate the deterministic prototype.
 
 ## Explicitly out of scope
