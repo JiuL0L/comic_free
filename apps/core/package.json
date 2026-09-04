@@ -1,0 +1,8 @@
+{
+  "name": "@comic-free/core",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@comic-free/contracts": "workspace:*"
+  }
+}

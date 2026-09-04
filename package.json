@@ -1,0 +1,24 @@
+{
+  "name": "comic-free",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "tsx scripts/start-dev.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build --config apps/web/vite.config.ts",
+    "test:unit": "tsx --test packages/contracts/src/health.test.ts scripts/dev-supervisor.test.ts",
+    "test:e2e": "playwright test",
+    "verify": "pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@comic-free/contracts": "workspace:*",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}

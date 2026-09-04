@@ -8,18 +8,20 @@ Status: PARTIALLY VERIFIED
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
 - Repository: Local Git repository with no remote configured.
 - Branch: `main`
-- Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation has not started.
+- Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation started with MVP ticket 01.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
 - Validated Suwayomi integration prototype: branch `prototype/suwayomi-integration`, commit `4416fd3`; executable probe code is intentionally absent from `main`.
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 is the current frontier.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 now provides the formal application shell.
 
-## Planned entrypoints
+## Entrypoints
 
-- WebUI: React, TypeScript, and Vite in a local browser on Windows; not scaffolded.
-- Local core: Node.js and TypeScript service bound to `127.0.0.1:3210` that owns Library Items, Source Bindings, and Reading Progress through built-in `node:sqlite`, exposes a small REST/JSON interface to the WebUI, translates Suwayomi GraphQL internally, proxies page images, and manages the Suwayomi child process; not scaffolded.
+- WebUI: `apps/web/src/App.tsx`; React, TypeScript, and Vite in a local browser on Windows. Ticket 01 implements startup, ready, failure, and retry states against the Local Core health route.
+- Local Core: `apps/core/src/main.ts`; Node.js and TypeScript service bound to `127.0.0.1:3210`. Ticket 01 implements `GET /api/v1/health`; Library Items, Source Bindings, Reading Progress, SQLite, Suwayomi translation, and page proxying remain future tickets.
+- Shared contracts: `packages/contracts/src/index.ts`; ticket 01 owns the runtime-validated `v1` health response.
+- Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
 - Source plugin host: Suwayomi loading trusted Mihon extensions through its extension-management capabilities; not scaffolded.
 
 ## Planned repository layout
@@ -57,6 +59,8 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 ## Verification
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
+- Ticket 01 development: `pnpm dev`; expected browser URL is `http://127.0.0.1:5173/`.
+- Ticket 01 deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process tests, completes the Chrome startup-state journey, and proves loopback port release.
 - Prototype verification: one command starts the Local Core and its Suwayomi child process; install, update, or disable a compatible trusted Mihon extension without rebuilding the WebUI or reinstalling the client; search, open details and chapters, display proxied pages, then disable the source and restart while retaining one Library Item and its Reading Progress.
 - Required deterministic checks use local fixtures for search, details, chapters, image proxying, library retention, unavailable bindings, and restart persistence; they do not require a live Comic Provider.
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.

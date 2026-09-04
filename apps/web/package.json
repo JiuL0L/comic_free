@@ -1,0 +1,10 @@
+{
+  "name": "@comic-free/web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@comic-free/contracts": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}
