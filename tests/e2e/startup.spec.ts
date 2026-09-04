@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   CORE_HEALTH_URL,
   LOCAL_CORE_PORT,
+  SOURCE_PLUGINS_URL,
   WEB_UI_ORIGIN,
   WEB_UI_PORT,
   WEB_UI_URL,
@@ -133,6 +134,8 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   await page.getByRole("button", { name: "Retry Local Core" }).click();
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
 
-  expect(new Set(browserFetches)).toEqual(new Set([CORE_HEALTH_URL]));
+  expect(new Set(browserFetches)).toEqual(
+    new Set([CORE_HEALTH_URL, SOURCE_PLUGINS_URL]),
+  );
   expect(startupOutput).toContain(`Comic Free is ready: ${WEB_UI_URL}`);
 });

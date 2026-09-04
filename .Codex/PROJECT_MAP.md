@@ -6,7 +6,7 @@ Status: PARTIALLY VERIFIED
 
 - Project: `comic_free`
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
-- Repository: Local Git repository with no remote configured.
+- Repository: `https://github.com/JiuL0L/comic_free.git`; local `main` tracks `origin/main`.
 - Branch: `main`
 - Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation started with MVP ticket 01.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
@@ -14,13 +14,13 @@ Status: PARTIALLY VERIFIED
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 now provides the formal application shell.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 provides the application shell and ticket 03 adds the retained Source Plugin catalog.
 
 ## Entrypoints
 
-- WebUI: `apps/web/src/App.tsx`; React, TypeScript, and Vite in a local browser on Windows. Ticket 01 implements startup, ready, failure, and retry states against the Local Core health route.
-- Local Core: `apps/core/src/main.ts`; Node.js and TypeScript service bound to `127.0.0.1:3210`. Ticket 01 implements `GET /api/v1/health`; Library Items, Source Bindings, Reading Progress, SQLite, Suwayomi translation, and page proxying remain future tickets.
-- Shared contracts: `packages/contracts/src/index.ts`; ticket 01 owns the runtime-validated `v1` health response.
+- WebUI: `apps/web/src/App.tsx`; React, TypeScript, and Vite in a local browser on Windows. It shows startup states plus the Source Plugin catalog loading, empty, availability, refresh-failure, confirmed-removal, and recovery states.
+- Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, and the fixture catalog adapter; it is bound to `127.0.0.1:3210` and exposes health plus `GET /api/v1/source-plugins` and `POST /api/v1/source-plugins/refresh`.
+- Shared contracts: `packages/contracts/src/index.ts`; runtime-validates the `v1` health and retained Source Plugin catalog responses.
 - Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
 - Source plugin host: Suwayomi loading trusted Mihon extensions through its extension-management capabilities; not scaffolded.
 
@@ -60,7 +60,8 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
 - Ticket 01 development: `pnpm dev`; expected browser URL is `http://127.0.0.1:5173/`.
-- Ticket 01 deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process tests, completes the Chrome startup-state journey, and proves loopback port release.
+- Deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process/SQLite tests, completes the Chrome startup and Source Plugin journeys, and proves loopback port release.
+- Ticket 03 verification log: `.local-data/test-output/03-source-plugin-catalog/verify.log`; the isolated branch passed contract, SQLite, REST, startup, catalog-failure, restart, confirmed-removal, and recovery checks without network access.
 - Prototype verification: one command starts the Local Core and its Suwayomi child process; install, update, or disable a compatible trusted Mihon extension without rebuilding the WebUI or reinstalling the client; search, open details and chapters, display proxied pages, then disable the source and restart while retaining one Library Item and its Reading Progress.
 - Required deterministic checks use local fixtures for search, details, chapters, image proxying, library retention, unavailable bindings, and restart persistence; they do not require a live Comic Provider.
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.
