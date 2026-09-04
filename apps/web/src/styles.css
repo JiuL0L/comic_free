@@ -38,14 +38,23 @@ button:focus-visible {
   outline-offset: 3px;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 code {
   font-family: "Cascadia Code", Consolas, monospace;
 }
 
 .shell {
-  width: min(42rem, calc(100% - 2rem));
+  width: min(68rem, calc(100% - 2rem));
   margin: 0 auto;
   padding: clamp(4rem, 14vh, 9rem) 0 3rem;
+}
+
+.startup-ready {
+  max-width: 42rem;
 }
 
 .eyebrow {
@@ -139,4 +148,151 @@ h1 {
   overflow-wrap: anywhere;
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 0.88rem;
+}
+
+.catalog {
+  margin-top: 5rem;
+  padding-top: 2rem;
+  border-top: 1px solid #d4d2ca;
+}
+
+.section-heading,
+.plugin-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-heading {
+  align-items: end;
+  margin-bottom: 1.5rem;
+}
+
+.section-heading .eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+h2,
+h3 {
+  margin: 0;
+}
+
+h2 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  letter-spacing: -0.035em;
+}
+
+h3 {
+  font-size: 1.05rem;
+}
+
+.catalog-notice {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #d4d2ca;
+  border-radius: 4px;
+  background: #fbfaf6;
+  color: #4b4f49;
+}
+
+.catalog-notice.error {
+  margin-bottom: 1rem;
+  border-left: 4px solid #a44a3f;
+}
+
+.catalog-notice button {
+  width: fit-content;
+  margin-top: 0.5rem;
+}
+
+.plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-card {
+  padding: 1rem;
+  border: 1px solid #d4d2ca;
+  border-radius: 4px;
+  background: #fbfaf6;
+}
+
+.plugin-card-heading p {
+  margin: 0.35rem 0 0;
+  color: #686c65;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.plugin-status {
+  flex: 0 0 auto;
+  padding: 0.28rem 0.45rem;
+  border-radius: 3px;
+  background: #e7e5de;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.status-healthy {
+  color: #285d40;
+  background: #dcebdd;
+}
+
+.status-confirmed_removed,
+.status-missing {
+  color: #7c352e;
+  background: #f2dfdc;
+}
+
+.plugin-card dl {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0 0;
+}
+
+.plugin-card dl div {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.5rem;
+}
+
+.plugin-card dt {
+  color: #686c65;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.plugin-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.refresh-required {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid #d4d2ca;
+  color: #745f20;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+@media (max-width: 42rem) {
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .section-heading button {
+    width: 100%;
+  }
 }

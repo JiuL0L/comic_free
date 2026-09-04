@@ -6,7 +6,7 @@ Status: PARTIALLY VERIFIED
 
 - Project: `comic_free`
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
-- Repository: Git repository with `origin` at `https://github.com/JiuL0L/comic_free.git`.
+- Repository: `https://github.com/JiuL0L/comic_free.git`; local `main` tracks `origin/main`.
 - Branch: `main`
 - Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation started with MVP ticket 01.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
@@ -14,12 +14,12 @@ Status: PARTIALLY VERIFIED
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01 and 02 now provide the formal application shell and deterministic reading/retention slice.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01–03 now provide the application shell, deterministic reading/retention slice, and retained Source Plugin catalog.
 
 ## Entrypoints
 
-- WebUI: `apps/web/src/App.tsx` and `apps/web/src/ReadingExperience.tsx`; React, TypeScript, and Vite in a local browser on Windows. Startup states lead into the fixture search/details/chapter reader and retained Library Item surface.
-- Local Core: `apps/core/src/main.ts` and `apps/core/src/server.ts`; Node.js and TypeScript service bound to `127.0.0.1:3210`. `reading-http.ts`, `reading-service.ts`, and `reading-store.ts` own the versioned REST, in-memory reader sessions, and Comic Free SQLite state.
+- WebUI: `apps/web/src/App.tsx`, `apps/web/src/SourcePlugins.tsx`, and `apps/web/src/ReadingExperience.tsx`; React, TypeScript, and Vite in a local browser on Windows. Startup states lead into the retained Source Plugin catalog, fixture search/details/chapter reader, and retained Library Item surface.
+- Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, the fixture catalog adapter, `ReadingStore`, and `ReadingService`; it is bound to `127.0.0.1:3210` and exposes health, Source Plugin catalog, reader-session, and Library Item REST routes.
 - Deterministic adapter: `apps/core/src/reading-adapter.ts`; implements the replaceable catalog/page interface with one named Source Plugin, durable provider keys, and three exact local SVG pages.
 - Shared contracts: `packages/contracts/src/index.ts` and `packages/contracts/src/reading.ts`; runtime-validate the `v1` health, catalog, reader-session, Library Item, error, and Reading Progress boundaries.
 - Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
@@ -61,9 +61,10 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
 - Ticket 01 development: `pnpm dev`; expected browser URL is `http://127.0.0.1:5173/`.
-- Ticket 01 deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process tests, completes the Chrome startup-state journey, and proves loopback port release.
+- Deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process/SQLite tests, completes the Chrome startup, Source Plugin, and reading journeys, and proves loopback port release.
 - Ticket 02 focused verification: `pnpm exec tsx --test packages/contracts/src/reading.test.ts apps/core/src/reading-adapter.test.ts apps/core/src/reading-store.test.ts apps/core/src/reading-http.test.ts` and `pnpm exec playwright test tests/e2e/reading.spec.ts`.
 - Ticket 02 full verification: `pnpm verify`; includes exact fixture-byte checks, transaction rollback/foreign-key/reopen tests, REST negative cases, the browser-visible reading journey, source failure, session invalidation, and retained-directory restart.
+- Ticket 03 verification log: `.local-data/test-output/03-source-plugin-catalog/verify.log`; the isolated branch passed contract, SQLite, REST, startup, catalog-failure, restart, confirmed-removal, and recovery checks without network access.
 - Prototype verification: one command starts the Local Core and its Suwayomi child process; install, update, or disable a compatible trusted Mihon extension without rebuilding the WebUI or reinstalling the client; search, open details and chapters, display proxied pages, then disable the source and restart while retaining one Library Item and its Reading Progress.
 - Required deterministic checks use local fixtures for search, details, chapters, image proxying, library retention, unavailable bindings, and restart persistence; they do not require a live Comic Provider.
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.

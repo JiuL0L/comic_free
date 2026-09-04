@@ -101,7 +101,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   });
   const searchButton = page.getByRole("button", { name: "Search catalog" });
   await expect(searchButton).toBeDisabled();
-  await page.getByLabel("Source Plugin").selectOption("fixture:reader");
+  await page.getByLabel("Source Plugin", { exact: true }).selectOption("fixture:reader");
   await page.getByLabel("Search query").fill("no matches");
   await expect(searchButton).toBeEnabled();
   await searchButton.click();

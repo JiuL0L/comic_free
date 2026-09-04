@@ -5,15 +5,20 @@ import {
   LOCAL_CORE_PORT,
 } from "@comic-free/contracts";
 
+import { FixtureCatalogAdapter } from "./catalog-adapter.ts";
+import { CatalogStore } from "./catalog-store.ts";
 import { FixtureReadingAdapter } from "./reading-adapter.ts";
 import { ReadingService } from "./reading-service.ts";
 import { ReadingStore } from "./reading-store.ts";
 import { createLocalCoreServer } from "./server.ts";
 
 const dataDirectory = path.resolve(process.env.COMIC_FREE_DATA_DIR ?? ".local-data");
-const readingStore = new ReadingStore(path.join(dataDirectory, "comic-free.sqlite"));
+const databasePath = path.join(dataDirectory, "comic-free.sqlite");
+const catalogStore = new CatalogStore(databasePath);
+const readingStore = new ReadingStore(databasePath);
+const adapter = new FixtureCatalogAdapter(process.env.COMIC_FREE_CATALOG_FIXTURE);
 const readingService = new ReadingService(new FixtureReadingAdapter(), readingStore);
-const server = createLocalCoreServer({ readingService });
+const server = createLocalCoreServer({ adapter, catalogStore, readingService });
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EADDRINUSE") {
@@ -33,6 +38,7 @@ server.listen({ host: LOCAL_CORE_HOST, port: LOCAL_CORE_PORT, exclusive: true },
 const close = () =>
   server.close(() => {
     readingStore.close();
+    catalogStore.close();
     process.exit(0);
   });
 process.once("SIGINT", close);

@@ -280,6 +280,7 @@ export function ReadingExperience() {
           <label>
             Source Plugin
             <select
+              aria-label="Source Plugin"
               value={sourcePluginKey}
               onChange={(event) => {
                 setSourcePluginKey(event.target.value);

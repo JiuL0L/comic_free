@@ -7,6 +7,8 @@ import {
 } from "@comic-free/contracts";
 
 import { ReadingExperience } from "./ReadingExperience.tsx";
+import { SourcePlugins } from "./SourcePlugins.tsx";
+import { requestJson } from "./api.ts";
 
 type StartupState =
   | { kind: "starting" }
@@ -14,11 +16,7 @@ type StartupState =
   | { kind: "failed"; message: string };
 
 async function requestHealth(signal: AbortSignal): Promise<HealthResponse> {
-  const response = await fetch(CORE_HEALTH_URL, { signal });
-  if (!response.ok) {
-    throw new Error(`Local Core returned HTTP ${response.status}.`);
-  }
-  return parseHealthResponse(await response.json());
+  return requestJson(CORE_HEALTH_URL, parseHealthResponse, { signal });
 }
 
 function failureMessage(error: unknown): string {
@@ -79,25 +77,28 @@ export function App() {
 
   return (
     <main className="shell" aria-live="polite">
-      <p className="eyebrow">LOCAL READER / SYSTEM STATUS</p>
-      <h1>Comic Free is ready</h1>
-      <p className="summary">
-        The Browser WebUI is connected through the Comic Free REST boundary.
-      </p>
-      <div className="status-line">
-        <span className="status-dot ready" aria-hidden="true" />
-        <span>Local Core · API {state.health.apiVersion}</span>
-      </div>
-      <dl className="facts">
-        <div>
-          <dt>Binding</dt>
-          <dd>127.0.0.1 only</dd>
+      <section className="startup-ready">
+        <p className="eyebrow">LOCAL READER / SYSTEM STATUS</p>
+        <h1>Comic Free is ready</h1>
+        <p className="summary">
+          The Browser WebUI is connected through the Comic Free REST boundary.
+        </p>
+        <div className="status-line">
+          <span className="status-dot ready" aria-hidden="true" />
+          <span>Local Core · API {state.health.apiVersion}</span>
         </div>
-        <div>
-          <dt>Service</dt>
-          <dd>{state.health.service}</dd>
-        </div>
-      </dl>
+        <dl className="facts">
+          <div>
+            <dt>Binding</dt>
+            <dd>127.0.0.1 only</dd>
+          </div>
+          <div>
+            <dt>Service</dt>
+            <dd>{state.health.service}</dd>
+          </div>
+        </dl>
+      </section>
+      <SourcePlugins />
       <ReadingExperience />
     </main>
   );
