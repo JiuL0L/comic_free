@@ -13,6 +13,7 @@ Status: PARTIALLY VERIFIED
 - Validated Suwayomi integration prototype: branch `prototype/suwayomi-integration`, commit `4416fd3`; executable probe code is intentionally absent from `main`.
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
+- Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
 
 ## Planned entrypoints
 
@@ -64,9 +65,10 @@ Page images return through `Comic Provider -> Mihon Source Plugin -> Suwayomi ->
 - A failed store refresh can collapse Suwayomi's catalog to installed entries and mark an installed extension obsolete: OBSERVED; Comic Free requires a Last Known Catalog and refresh-failure state.
 - MANGA Plus live catalog access through the installed extension: FAILED in SEARCH, POPULAR, and LATEST modes despite direct provider API reachability; details, chapters, pages, and image proxying remain UNVERIFIED.
 - MangaDex `1.4.212` dynamic installation, 61-source enumeration, live search, details, chapters, and page URL discovery through Suwayomi GraphQL: VALIDATED on 2026-09-03 by prototype commit `1099106`; the successful selected result returned 95 page URLs.
-- Actual page image bytes, Local Core proxying, and browser rendering: UNVERIFIED.
+- Local Core `127.0.0.1:3210` REST/JSON facade, Comic Free-owned SQLite state, exact fixture PNG byte proxying, source-failure retention, and restart persistence: VALIDATED with deterministic fixtures on 2026-09-03 by artifact commit `718c179` and verdict commit `7229946`; two consecutive full checks passed.
+- Live-provider page image bytes, Suwayomi-to-Local-Core translation, and browser rendering: UNVERIFIED.
 - Windows application-level graceful Suwayomi/H2 shutdown: UNVERIFIED; `child.kill("SIGTERM")` is not sufficient evidence of a database-safe shutdown.
-- Comic Free SQLite persistence and REST integration: UNVERIFIED.
+- Formal Comic Free REST contracts, migrations, and product integration: UNVERIFIED; the validated schema and routes are throwaway fixtures, not production commitments.
 
 ## Uncertainty
 

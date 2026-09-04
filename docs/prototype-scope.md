@@ -6,6 +6,8 @@ Validated finding: The user accepted the source-failure state model on 2026-09-0
 
 Validated finding: MangaDex `1.4.212` was dynamically installed through Suwayomi and completed live search, details, chapter discovery, and page URL discovery on 2026-09-03. The artifact remains on branch `prototype/mangadex-live-flow` at commit `1099106`; this validates traversal through page URLs, not actual image-byte proxying, SQLite persistence, or browser rendering.
 
+Validated finding: A minimal Node.js Local Core bound to `127.0.0.1:3210` exposed normalized fixture-backed REST/JSON, stored Library Items, Last Known Snapshots, Source Bindings, and Reading Progress in Comic Free-owned SQLite, proxied the fixture provider's exact PNG bytes, and retained the unavailable binding and reading state across restart. Two consecutive deterministic checks passed on 2026-09-03. The executable artifact remains on branch `prototype/local-core-boundary` at commit `718c179`, with verdict commit `7229946`; this does not validate live-provider image bytes, Suwayomi translation, browser rendering, formal contracts, migrations, or production hardening.
+
 Validated finding: The pinned Suwayomi `v2.3.2243` JAR passed digest verification, reached GraphQL readiness, exposed extension-management operations, rejected an occupied port before startup, and released its port after controlled termination. The executable probe remains on branch `prototype/suwayomi-integration` at commit `4416fd3`. Windows application-level graceful shutdown of Suwayomi and H2 remains unverified.
 
 Validated finding: Suwayomi dynamically added the current Keiyoushi protobuf store, installed `MANGA Plus by SHUEISHA 1.6.65`, exposed nine language sources, and retained the installation across restart. The executable probe remains on branch `prototype/mihon-extension-flow` at commit `3ba7eb8`. Live MANGA Plus browsing did not pass: SEARCH, POPULAR, and LATEST all returned the extension's generic error despite direct provider API reachability. A failed store refresh also marked the retained extension obsolete, so Comic Free must preserve a Last Known Catalog and distinguish refresh failure from confirmed removal.
@@ -102,6 +104,8 @@ Required deterministic checks:
 6. Disabling or failing its source leaves the local item and progress intact and visibly unavailable.
 7. Restarting the prototype preserves the same local state.
 8. A compatible trusted Mihon extension can be installed, updated, or disabled without rebuilding the WebUI.
+
+Current evidence: the deterministic Local Core portion of search, details, chapters, page-byte proxying, library retention, unavailable binding state, and restart persistence is validated by `prototype/local-core-boundary`. Its one-command check starts a loopback fixture Comic Provider and the Local Core, not a managed Suwayomi child; the previously validated Suwayomi and extension prototypes remain separate evidence.
 
 Optional live smoke check:
 
