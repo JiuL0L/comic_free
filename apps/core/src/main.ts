@@ -6,11 +6,21 @@ import {
   type PluginHostStatusResponse,
 } from "@comic-free/contracts";
 
-import { createLocalCoreServer } from "./server.ts";
+import { FixtureCatalogAdapter } from "./catalog-adapter.ts";
+import { CatalogStore } from "./catalog-store.ts";
 import type { PluginHostManager } from "./plugin-host-manager.ts";
+import { FixtureReadingAdapter } from "./reading-adapter.ts";
+import { ReadingService } from "./reading-service.ts";
+import { ReadingStore } from "./reading-store.ts";
+import { createLocalCoreServer } from "./server.ts";
 import { createSuwayomiPluginHost } from "./suwayomi-plugin-host.ts";
 
 const dataDirectory = path.resolve(process.env.COMIC_FREE_DATA_DIR ?? ".local-data");
+const databasePath = path.join(dataDirectory, "comic-free.sqlite");
+const catalogStore = new CatalogStore(databasePath);
+const readingStore = new ReadingStore(databasePath);
+const adapter = new FixtureCatalogAdapter(process.env.COMIC_FREE_CATALOG_FIXTURE);
+const readingService = new ReadingService(new FixtureReadingAdapter(), readingStore);
 const configuredJarPath = process.env.COMIC_FREE_SUWAYOMI_JAR?.trim();
 const approvedSha256 = process.env.COMIC_FREE_SUWAYOMI_APPROVED_SHA256?.trim();
 let pluginHost: PluginHostManager | null = null;
@@ -36,7 +46,10 @@ if (configuredJarPath && approvedSha256) {
 }
 
 const server = createLocalCoreServer({
+  adapter,
+  catalogStore,
   pluginHostStatus: () => pluginHost?.status() ?? pluginHostFallback,
+  readingService,
 });
 
 server.on("error", (error: NodeJS.ErrnoException) => {
@@ -68,7 +81,11 @@ const close = async () => {
     exitCode = 1;
     writeLocalCoreFailure("plugin_host_shutdown_failed", error);
   }
-  server.close(() => process.exit(exitCode));
+  server.close(() => {
+    readingStore.close();
+    catalogStore.close();
+    process.exit(exitCode);
+  });
 };
 process.once("SIGINT", () => void close());
 process.once("SIGTERM", () => void close());

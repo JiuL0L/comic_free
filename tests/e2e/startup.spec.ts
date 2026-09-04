@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 import {
   CORE_HEALTH_URL,
-  LOCAL_CORE_ORIGIN,
+  LIBRARY_ITEMS_PATH,
   LOCAL_CORE_PORT,
+  LOCAL_CORE_ORIGIN,
   PLUGIN_HOST_STATUS_URL,
+  SOURCE_PLUGINS_URL,
   WEB_UI_ORIGIN,
   WEB_UI_PORT,
   WEB_UI_URL,
@@ -154,7 +156,12 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
 
   expect(browserFetches).toEqual(
-    expect.arrayContaining([CORE_HEALTH_URL, PLUGIN_HOST_STATUS_URL]),
+    expect.arrayContaining([
+      CORE_HEALTH_URL,
+      PLUGIN_HOST_STATUS_URL,
+      SOURCE_PLUGINS_URL,
+      `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`,
+    ]),
   );
   expect(browserFetches.every((url) => url.startsWith(LOCAL_CORE_ORIGIN))).toBe(true);
   expect(startupOutput).toContain(`Comic Free is ready: ${WEB_UI_URL}`);

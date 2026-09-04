@@ -7,7 +7,7 @@
     "dev": "tsx scripts/start-dev.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config apps/web/vite.config.ts",
-    "test:unit": "tsx --test packages/contracts/src/health.test.ts packages/contracts/src/plugin-host.test.ts apps/core/src/jvm-shutdown-agent.test.ts apps/core/src/plugin-host-http.test.ts apps/core/src/plugin-host-manager.test.ts scripts/dev-supervisor.test.ts",
+    "test:unit": "tsx --test packages/contracts/src/*.test.ts apps/core/src/*.test.ts scripts/*.test.ts",
     "test:e2e": "playwright test",
     "verify:suwayomi": "tsx scripts/verify-suwayomi-lifecycle.ts",
     "verify": "pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:e2e"
