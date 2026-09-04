@@ -14,16 +14,17 @@ Status: PARTIALLY VERIFIED
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01–03 now provide the application shell, deterministic reading/retention slice, and retained Source Plugin catalog.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01–04 provide the application shell, deterministic reading/retention slice, retained Source Plugin catalog, and approved Suwayomi lifecycle management.
 
 ## Entrypoints
 
-- WebUI: `apps/web/src/App.tsx`, `apps/web/src/SourcePlugins.tsx`, and `apps/web/src/ReadingExperience.tsx`; React, TypeScript, and Vite in a local browser on Windows. Startup states lead into the retained Source Plugin catalog, fixture search/details/chapter reader, and retained Library Item surface.
-- Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, the fixture catalog adapter, `ReadingStore`, and `ReadingService`; it is bound to `127.0.0.1:3210` and exposes health, Source Plugin catalog, reader-session, and Library Item REST routes.
+- WebUI: `apps/web/src/App.tsx`, `apps/web/src/PluginHostStatus.tsx`, `apps/web/src/SourcePlugins.tsx`, and `apps/web/src/ReadingExperience.tsx`; React, TypeScript, and Vite in a local browser on Windows. Startup states lead into managed Plugin Host status, retained Source Plugin catalog, fixture search/details/chapter reader, and retained Library Items.
+- Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, the fixture catalog adapter, `ReadingStore`, `ReadingService`, and the optional approved Suwayomi Plugin Host; it is bound to `127.0.0.1:3210`.
+- Plugin Host lifecycle: `apps/core/src/plugin-host-manager.ts` owns validated spawn/readiness/status/logging/shutdown behavior; `apps/core/src/suwayomi-plugin-host.ts` supplies isolated Suwayomi arguments; `apps/core/java/comicfree/shutdown/ComicFreeShutdownAgent.java` provides the application-level JVM shutdown endpoint.
 - Deterministic adapter: `apps/core/src/reading-adapter.ts`; implements the replaceable catalog/page interface with one named Source Plugin, durable provider keys, and three exact local SVG pages.
-- Shared contracts: `packages/contracts/src/index.ts` and `packages/contracts/src/reading.ts`; runtime-validate the `v1` health, catalog, reader-session, Library Item, error, and Reading Progress boundaries.
+- Shared contracts: `packages/contracts/src/index.ts` and `packages/contracts/src/reading.ts`; runtime-validate the `v1` health, Plugin Host lifecycle, catalog, reader-session, Library Item, error, and Reading Progress boundaries.
 - Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
-- Source plugin host: Suwayomi loading trusted Mihon extensions through its extension-management capabilities; the formal live adapter is not scaffolded.
+- Source plugin host: approved Suwayomi process lifecycle is scaffolded; trusted Mihon extension loading and source translation remain later tickets.
 
 ## Planned repository layout
 
@@ -61,7 +62,8 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
 - Ticket 01 development: `pnpm dev`; expected browser URL is `http://127.0.0.1:5173/`.
-- Deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process/SQLite tests, completes the Chrome startup, Source Plugin, and reading journeys, and proves loopback port release.
+- Deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process/SQLite tests, completes the Chrome startup, Plugin Host status, Source Plugin, and reading journeys, and proves loopback port release.
+- Opt-in real lifecycle verification: with an explicitly approved local artifact configured, `pnpm verify:suwayomi` starts the same Suwayomi data root twice, probes database-backed GraphQL state, requests in-JVM application shutdown, and verifies H2 lock and port release.
 - Ticket 02 focused verification: `pnpm exec tsx --test packages/contracts/src/reading.test.ts apps/core/src/reading-adapter.test.ts apps/core/src/reading-store.test.ts apps/core/src/reading-http.test.ts` and `pnpm exec playwright test tests/e2e/reading.spec.ts`.
 - Ticket 02 full verification: `pnpm verify`; includes exact fixture-byte checks, transaction rollback/foreign-key/reopen tests, REST negative cases, the browser-visible reading journey, source failure, session invalidation, and retained-directory restart.
 - Ticket 03 verification log: `.local-data/test-output/03-source-plugin-catalog/verify.log`; the isolated branch passed contract, SQLite, REST, startup, catalog-failure, restart, confirmed-removal, and recovery checks without network access.
@@ -80,12 +82,12 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 - Live MangaDex page image bytes and browser rendering through a temporary loopback diagnostic proxy: VALIDATED on 2026-09-04 (`200 image/jpeg`, 547622 bytes, with Source Plugin name, comic title, chapter, and page count visible). This is evidence for the boundary, not a formal Local Core adapter.
 - Suwayomi-local numeric chapter/page references becoming stale after restart and requiring fresh chapter/page resolution: OBSERVED on 2026-09-04; they must not be persisted as durable Comic Free identity.
 - Formal Suwayomi-to-Local-Core translation and product Browser WebUI rendering: UNVERIFIED.
-- Windows application-level graceful Suwayomi/H2 shutdown: UNVERIFIED; `child.kill("SIGTERM")` is not sufficient evidence of a database-safe shutdown.
-- Formal fixture-backed Comic Free REST contracts, initial reading-state migration, transactional retention, exact-byte session proxy, Browser WebUI journey, and restart persistence: VALIDATED by ticket 02 deterministic checks. Suwayomi translation remains UNVERIFIED.
+- Windows application-level graceful Suwayomi/H2 shutdown: VALIDATED on 2026-09-04 with official Suwayomi `v2.3.2243` at SHA-256 `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5`. Two consecutive runs reached GraphQL readiness, queried the database, stopped through the in-JVM shutdown-agent endpoint, released port `4568`, left no H2 lock, and reopened `runtime/database.mv.db` cleanly.
+- Formal fixture-backed Comic Free REST contracts, initial reading-state migration, transactional retention, exact-byte session proxy, Browser WebUI journey, restart persistence, and approved Suwayomi process lifecycle: VALIDATED by tickets 02–04. Suwayomi catalog/reader translation remains UNVERIFIED.
 
 ## Uncertainty
 
 - How later Source Plugin catalog and Suwayomi migrations will be ordered alongside the reading-state migration.
-- Exact application-level mechanism for database-safe Suwayomi/H2 shutdown on Windows.
+- Whether future Suwayomi releases preserve compatibility with the first-party Java shutdown-agent injection; every newly approved artifact must repeat the lifecycle verification.
 - Whether MANGA Plus's current extension failure is caused by Suwayomi compatibility, Java networking, or provider request semantics.
 - Which stable public title and chapter should back repeatable optional live smoke checks; the successful substring search was pipeline evidence, not a fixed-title assertion.

@@ -4,6 +4,7 @@ import {
   LIBRARY_ITEMS_PATH,
   LOCAL_CORE_PORT,
   LOCAL_CORE_ORIGIN,
+  PLUGIN_HOST_STATUS_URL,
   SOURCE_PLUGINS_URL,
   WEB_UI_ORIGIN,
   WEB_UI_PORT,
@@ -112,6 +113,24 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   releaseHealthRequest();
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
   await expect(page.getByText("Local Core · API v1")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plugin Host" })).toBeVisible();
+  await expect(page.getByText("Not configured")).toBeVisible();
+
+  await page.route(PLUGIN_HOST_STATUS_URL, async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        apiVersion: "v1",
+        internalPort: null,
+        message: "The Plugin Host exited unexpectedly (code 42).",
+        retryable: true,
+        state: "unexpected_exit",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await expect(page.getByText("Exited unexpectedly", { exact: true })).toBeVisible();
+  await page.unroute(PLUGIN_HOST_STATUS_URL);
 
   await page.unroute(CORE_HEALTH_URL);
   let shouldFail = true;
@@ -136,12 +155,14 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   await page.getByRole("button", { name: "Retry Local Core" }).click();
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
 
-  expect(new Set(browserFetches)).toEqual(
-    new Set([
+  expect(browserFetches).toEqual(
+    expect.arrayContaining([
       CORE_HEALTH_URL,
+      PLUGIN_HOST_STATUS_URL,
       SOURCE_PLUGINS_URL,
       `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`,
     ]),
   );
+  expect(browserFetches.every((url) => url.startsWith(LOCAL_CORE_ORIGIN))).toBe(true);
   expect(startupOutput).toContain(`Comic Free is ready: ${WEB_UI_URL}`);
 });

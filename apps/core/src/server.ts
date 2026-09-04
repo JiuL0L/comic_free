@@ -2,10 +2,12 @@ import { createServer, type ServerResponse } from "node:http";
 
 import {
   CORE_HEALTH_PATH,
+  PLUGIN_HOST_STATUS_PATH,
   SOURCE_PLUGINS_PATH,
   SOURCE_PLUGINS_REFRESH_PATH,
   WEB_UI_ORIGIN,
   createHealthResponse,
+  type PluginHostStatusResponse,
 } from "@comic-free/contracts";
 
 import type { CatalogAdapter } from "./catalog-adapter.ts";
@@ -17,8 +19,17 @@ import type { ReadingService } from "./reading-service.ts";
 export interface LocalCoreServerOptions {
   adapter: CatalogAdapter;
   catalogStore: CatalogStore;
+  pluginHostStatus?: () => PluginHostStatusResponse;
   readingService?: ReadingService;
 }
+
+const NOT_CONFIGURED: PluginHostStatusResponse = {
+  apiVersion: "v1",
+  internalPort: null,
+  message: "No approved Suwayomi JAR is configured.",
+  retryable: false,
+  state: "not_configured",
+};
 
 async function refreshCatalog(
   response: ServerResponse,
@@ -65,6 +76,7 @@ async function refreshCatalog(
 export function createLocalCoreServer({
   adapter,
   catalogStore,
+  pluginHostStatus,
   readingService,
 }: LocalCoreServerOptions) {
   const handleReading = readingService
@@ -87,6 +99,11 @@ export function createLocalCoreServer({
 
     if (request.method === "GET" && request.url === CORE_HEALTH_PATH) {
       writeJson(response, 200, createHealthResponse());
+      return;
+    }
+
+    if (request.method === "GET" && request.url === PLUGIN_HOST_STATUS_PATH) {
+      writeJson(response, 200, pluginHostStatus?.() ?? NOT_CONFIGURED);
       return;
     }
 
