@@ -6,6 +6,8 @@ import {
   type HealthResponse,
 } from "@comic-free/contracts";
 
+import { PluginHostStatus } from "./PluginHostStatus.tsx";
+
 type StartupState =
   | { kind: "starting" }
   | { health: HealthResponse; kind: "ready" }
@@ -96,6 +98,7 @@ export function App() {
           <dd>{state.health.service}</dd>
         </div>
       </dl>
+      <PluginHostStatus />
     </main>
   );
 }

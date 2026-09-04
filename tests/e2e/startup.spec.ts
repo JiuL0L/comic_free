@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
   CORE_HEALTH_URL,
+  LOCAL_CORE_ORIGIN,
   LOCAL_CORE_PORT,
+  PLUGIN_HOST_STATUS_URL,
   WEB_UI_ORIGIN,
   WEB_UI_PORT,
   WEB_UI_URL,
@@ -109,6 +111,8 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   releaseHealthRequest();
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
   await expect(page.getByText("Local Core · API v1")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plugin Host" })).toBeVisible();
+  await expect(page.getByText("Not configured")).toBeVisible();
 
   await page.unroute(CORE_HEALTH_URL);
   let shouldFail = true;
@@ -133,6 +137,9 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   await page.getByRole("button", { name: "Retry Local Core" }).click();
   await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
 
-  expect(new Set(browserFetches)).toEqual(new Set([CORE_HEALTH_URL]));
+  expect(browserFetches).toEqual(
+    expect.arrayContaining([CORE_HEALTH_URL, PLUGIN_HOST_STATUS_URL]),
+  );
+  expect(browserFetches.every((url) => url.startsWith(LOCAL_CORE_ORIGIN))).toBe(true);
   expect(startupOutput).toContain(`Comic Free is ready: ${WEB_UI_URL}`);
 });

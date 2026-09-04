@@ -6,23 +6,24 @@ Status: PARTIALLY VERIFIED
 
 - Project: `comic_free`
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
-- Repository: Local Git repository with no remote configured.
-- Branch: `main`
+- Repository: `https://github.com/JiuL0L/comic_free.git`; local `main` tracks `origin/main`.
+- Branch: `codex/04-manage-suwayomi-safely`
 - Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation started with MVP ticket 01.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
 - Validated Suwayomi integration prototype: branch `prototype/suwayomi-integration`, commit `4416fd3`; executable probe code is intentionally absent from `main`.
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 now provides the formal application shell.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 provides the shell and ticket 04 adds approved Suwayomi lifecycle management.
 
 ## Entrypoints
 
-- WebUI: `apps/web/src/App.tsx`; React, TypeScript, and Vite in a local browser on Windows. Ticket 01 implements startup, ready, failure, and retry states against the Local Core health route.
-- Local Core: `apps/core/src/main.ts`; Node.js and TypeScript service bound to `127.0.0.1:3210`. Ticket 01 implements `GET /api/v1/health`; Library Items, Source Bindings, Reading Progress, SQLite, Suwayomi translation, and page proxying remain future tickets.
-- Shared contracts: `packages/contracts/src/index.ts`; ticket 01 owns the runtime-validated `v1` health response.
+- WebUI: `apps/web/src/App.tsx`; React, TypeScript, and Vite in a local browser on Windows. `apps/web/src/PluginHostStatus.tsx` renders the normalized managed-process lifecycle without receiving GraphQL or shutdown credentials.
+- Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts` with the optional approved Suwayomi Plugin Host and is bound to `127.0.0.1:3210`.
+- Plugin Host lifecycle: `apps/core/src/plugin-host-manager.ts` owns validated spawn/readiness/status/logging/shutdown behavior; `apps/core/src/suwayomi-plugin-host.ts` supplies isolated Suwayomi arguments; `apps/core/java/comicfree/shutdown/ComicFreeShutdownAgent.java` provides the application-level JVM shutdown endpoint.
+- Shared contracts: `packages/contracts/src/index.ts`; runtime-validates the `v1` health and Plugin Host lifecycle responses.
 - Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
-- Source plugin host: Suwayomi loading trusted Mihon extensions through its extension-management capabilities; not scaffolded.
+- Source plugin host: approved Suwayomi process lifecycle is scaffolded; trusted Mihon extension loading and source translation remain later tickets.
 
 ## Planned repository layout
 
@@ -60,7 +61,8 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
 - Ticket 01 development: `pnpm dev`; expected browser URL is `http://127.0.0.1:5173/`.
-- Ticket 01 deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process tests, completes the Chrome startup-state journey, and proves loopback port release.
+- Deterministic verification: `pnpm verify`; type-checks, builds, runs contract/process tests, completes the Chrome startup and Plugin Host status journey, and proves loopback port release.
+- Opt-in real lifecycle verification: with an explicitly approved local artifact configured, `pnpm verify:suwayomi` starts the same Suwayomi data root twice, probes database-backed GraphQL state, requests in-JVM application shutdown, and verifies H2 lock and port release.
 - Prototype verification: one command starts the Local Core and its Suwayomi child process; install, update, or disable a compatible trusted Mihon extension without rebuilding the WebUI or reinstalling the client; search, open details and chapters, display proxied pages, then disable the source and restart while retaining one Library Item and its Reading Progress.
 - Required deterministic checks use local fixtures for search, details, chapters, image proxying, library retention, unavailable bindings, and restart persistence; they do not require a live Comic Provider.
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.
@@ -76,12 +78,12 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 - Live MangaDex page image bytes and browser rendering through a temporary loopback diagnostic proxy: VALIDATED on 2026-09-04 (`200 image/jpeg`, 547622 bytes, with Source Plugin name, comic title, chapter, and page count visible). This is evidence for the boundary, not a formal Local Core adapter.
 - Suwayomi-local numeric chapter/page references becoming stale after restart and requiring fresh chapter/page resolution: OBSERVED on 2026-09-04; they must not be persisted as durable Comic Free identity.
 - Formal Suwayomi-to-Local-Core translation and product Browser WebUI rendering: UNVERIFIED.
-- Windows application-level graceful Suwayomi/H2 shutdown: UNVERIFIED; `child.kill("SIGTERM")` is not sufficient evidence of a database-safe shutdown.
+- Windows application-level graceful Suwayomi/H2 shutdown: VALIDATED on 2026-09-04 with official Suwayomi `v2.3.2243` at SHA-256 `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5`. Two consecutive runs reached GraphQL readiness, queried the database, stopped through the in-JVM shutdown-agent endpoint, released port `4568`, left no H2 lock, and reopened `runtime/database.mv.db` cleanly.
 - Formal Comic Free REST contracts, migrations, and product integration: UNVERIFIED; the validated schema and routes are throwaway fixtures, not production commitments.
 
 ## Uncertainty
 
 - Exact REST resources, validation library, and persistence schema.
-- Exact application-level mechanism for database-safe Suwayomi/H2 shutdown on Windows.
+- Whether future Suwayomi releases preserve compatibility with the first-party Java shutdown-agent injection; every newly approved artifact must repeat the lifecycle verification.
 - Whether MANGA Plus's current extension failure is caused by Suwayomi compatibility, Java networking, or provider request semantics.
 - Which stable public title and chapter should back repeatable optional live smoke checks; the successful substring search was pipeline evidence, not a fixed-title assertion.
