@@ -7,7 +7,7 @@
     "dev": "tsx scripts/start-dev.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config apps/web/vite.config.ts",
-    "test:unit": "tsx --test packages/contracts/src/health.test.ts scripts/dev-supervisor.test.ts",
+    "test:unit": "tsx --test packages/contracts/src/*.test.ts apps/core/src/*.test.ts scripts/*.test.ts",
     "test:e2e": "playwright test",
     "verify": "pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:e2e"
   },
