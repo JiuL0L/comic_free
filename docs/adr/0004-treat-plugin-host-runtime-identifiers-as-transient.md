@@ -1,0 +1,3 @@
+# Treat Plugin Host runtime identifiers as transient
+
+Comic Free persists its own Library Item identity plus provider-stable binding keys and Last Known Snapshots, but does not persist Suwayomi-local numeric manga or chapter identifiers, resolved page lists, or upstream page URLs as durable identity. The Local Core resolves current Plugin Host identifiers when provider-dependent work begins and exposes only opaque, short-lived reader sessions to the Browser WebUI, because Suwayomi cache state can be rebuilt across restarts and previously issued local identifiers or page paths can become invalid.

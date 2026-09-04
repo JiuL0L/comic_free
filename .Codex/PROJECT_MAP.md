@@ -14,6 +14,7 @@ Status: PARTIALLY VERIFIED
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`, awaiting `/to-tickets` decomposition.
 
 ## Planned entrypoints
 
@@ -51,6 +52,8 @@ Status: PARTIALLY VERIFIED
 
 Page images return through `Comic Provider -> Mihon Source Plugin -> Suwayomi -> local core proxy -> Browser WebUI`.
 
+Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstream page URLs are transient; the Local Core re-resolves them and gives the WebUI only short-lived reader-session references.
+
 ## Verification
 
 - Setup verification: inspect the files under `docs/agents/` and run `git status --short --branch`.
@@ -66,13 +69,15 @@ Page images return through `Comic Provider -> Mihon Source Plugin -> Suwayomi ->
 - MANGA Plus live catalog access through the installed extension: FAILED in SEARCH, POPULAR, and LATEST modes despite direct provider API reachability; details, chapters, pages, and image proxying remain UNVERIFIED.
 - MangaDex `1.4.212` dynamic installation, 61-source enumeration, live search, details, chapters, and page URL discovery through Suwayomi GraphQL: VALIDATED on 2026-09-03 by prototype commit `1099106`; the successful selected result returned 95 page URLs.
 - Local Core `127.0.0.1:3210` REST/JSON facade, Comic Free-owned SQLite state, exact fixture PNG byte proxying, source-failure retention, and restart persistence: VALIDATED with deterministic fixtures on 2026-09-03 by artifact commit `718c179` and verdict commit `7229946`; two consecutive full checks passed.
-- Live-provider page image bytes, Suwayomi-to-Local-Core translation, and browser rendering: UNVERIFIED.
+- Live MangaDex page image bytes and browser rendering through a temporary loopback diagnostic proxy: VALIDATED on 2026-09-04 (`200 image/jpeg`, 547622 bytes, with Source Plugin name, comic title, chapter, and page count visible). This is evidence for the boundary, not a formal Local Core adapter.
+- Suwayomi-local numeric chapter/page references becoming stale after restart and requiring fresh chapter/page resolution: OBSERVED on 2026-09-04; they must not be persisted as durable Comic Free identity.
+- Formal Suwayomi-to-Local-Core translation and product Browser WebUI rendering: UNVERIFIED.
 - Windows application-level graceful Suwayomi/H2 shutdown: UNVERIFIED; `child.kill("SIGTERM")` is not sufficient evidence of a database-safe shutdown.
 - Formal Comic Free REST contracts, migrations, and product integration: UNVERIFIED; the validated schema and routes are throwaway fixtures, not production commitments.
 
 ## Uncertainty
 
 - Exact REST resources, validation library, and persistence schema.
-- Windows-specific graceful Suwayomi/H2 shutdown mechanism.
+- Exact application-level mechanism for database-safe Suwayomi/H2 shutdown on Windows.
 - Whether MANGA Plus's current extension failure is caused by Suwayomi compatibility, Java networking, or provider request semantics.
 - Which stable public title and chapter should back repeatable optional live smoke checks; the successful substring search was pipeline evidence, not a fixed-title assertion.
