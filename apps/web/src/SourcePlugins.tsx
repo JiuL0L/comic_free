@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 
 import {
   parseSourcePluginCatalogResponse,
+  parseSourcePluginChangeResponse,
+  SOURCE_PLUGIN_CHANGE_ACTIONS,
+  SOURCE_PLUGIN_CHANGES_URL,
   SOURCE_PLUGINS_REFRESH_URL,
   SOURCE_PLUGINS_URL,
   type SourcePluginCatalogResponse,
+  type SourcePluginChangeAction,
+  type SourcePluginChangeResponse,
   type SourcePluginStatus,
 } from "@comic-free/contracts";
 
@@ -30,6 +35,12 @@ type CatalogState =
     }
   | { kind: "failed"; message: string };
 
+type ChangeState =
+  | { kind: "idle" }
+  | { kind: "pending" }
+  | { kind: "success"; response: SourcePluginChangeResponse }
+  | { kind: "failed"; message: string };
+
 function failureMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -51,6 +62,12 @@ export function SourcePlugins() {
   const [attempt, setAttempt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [state, setState] = useState<CatalogState>({ kind: "loading" });
+  const [action, setAction] = useState<SourcePluginChangeAction>("install");
+  const [storeUrl, setStoreUrl] = useState("");
+  const [packageName, setPackageName] = useState("");
+  const [expectedVersion, setExpectedVersion] = useState("");
+  const [approved, setApproved] = useState(false);
+  const [change, setChange] = useState<ChangeState>({ kind: "idle" });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,6 +104,45 @@ export function SourcePlugins() {
     }
   };
 
+  const resetApproval = () => {
+    setApproved(false);
+    setChange({ kind: "idle" });
+  };
+
+  const applyChange = async () => {
+    setChange({ kind: "pending" });
+    try {
+      const response = await requestJson(
+        SOURCE_PLUGIN_CHANGES_URL,
+        parseSourcePluginChangeResponse,
+        {
+          body: JSON.stringify({
+            action,
+            approval: { approved },
+            source: {
+              expectedVersion: action === "disable" ? null : expectedVersion.trim(),
+              kind: "extension_store",
+              packageName: packageName.trim(),
+              storeUrl: storeUrl.trim(),
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      setState({ kind: "loaded", catalog: response.catalog, requestError: null });
+      setChange({ kind: "success", response });
+      setApproved(false);
+    } catch (error) {
+      setChange({ kind: "failed", message: failureMessage(error) });
+    }
+  };
+
+  const sourceComplete =
+    storeUrl.trim() !== "" &&
+    packageName.trim() !== "" &&
+    (action === "disable" || expectedVersion.trim() !== "");
+
   return (
     <section className="catalog" aria-labelledby="source-plugins-heading">
       <div className="section-heading">
@@ -102,6 +158,126 @@ export function SourcePlugins() {
           Refresh Source Plugins
         </button>
       </div>
+
+      <form
+        className="plugin-change-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void applyChange();
+        }}
+      >
+        <div className="plugin-change-heading">
+          <div>
+            <p className="eyebrow">EXPLICIT APPROVAL / THIRD-PARTY CODE</p>
+            <h3>Manage a trusted change</h3>
+          </div>
+          <p>
+            Comic Free sends this request only to the Local Core. Install, update,
+            and restore require the exact version you approve.
+          </p>
+        </div>
+        <div className="plugin-change-fields">
+          <label>
+            Change action
+            <select
+              value={action}
+              onChange={(event) => {
+                setAction(event.target.value as SourcePluginChangeAction);
+                resetApproval();
+              }}
+            >
+              {SOURCE_PLUGIN_CHANGE_ACTIONS.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {candidate[0]?.toUpperCase()}{candidate.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Extension store URL
+            <input
+              type="url"
+              value={storeUrl}
+              onChange={(event) => {
+                setStoreUrl(event.target.value);
+                resetApproval();
+              }}
+              placeholder="https://…/index.pb"
+            />
+          </label>
+          <label>
+            Package name
+            <input
+              value={packageName}
+              onChange={(event) => {
+                setPackageName(event.target.value);
+                resetApproval();
+              }}
+              placeholder="eu.kanade.tachiyomi.extension…"
+            />
+          </label>
+          <label>
+            Approved version
+            <input
+              disabled={action === "disable"}
+              value={action === "disable" ? "Not required for disable" : expectedVersion}
+              onChange={(event) => {
+                setExpectedVersion(event.target.value);
+                resetApproval();
+              }}
+              placeholder="1.2.3"
+            />
+          </label>
+        </div>
+        <label className="plugin-approval">
+          <input
+            type="checkbox"
+            checked={approved}
+            disabled={!sourceComplete || change.kind === "pending"}
+            onChange={(event) => setApproved(event.target.checked)}
+          />
+          I approve {action} for {packageName.trim() || "this package"} from the
+          extension store shown above.
+        </label>
+        <button
+          type="submit"
+          disabled={!sourceComplete || !approved || change.kind === "pending"}
+        >
+          Apply approved change
+        </button>
+        {change.kind === "pending" && (
+          <p className="catalog-notice" aria-live="polite">
+            Applying approved change…
+          </p>
+        )}
+        {change.kind === "failed" && (
+          <div className="catalog-notice error" role="alert">
+            <strong>Source Plugin change failed</strong>
+            <span>{change.message}</span>
+          </div>
+        )}
+        {change.kind === "success" && (
+          <div className="catalog-notice change-success" role="status">
+            <strong>
+              {change.response.change.outcome === "restart_required"
+                ? "Restart required"
+                : "Change successful"}
+            </strong>
+            <span>{change.response.change.message}</span>
+            <span>
+              {change.response.change.source.packageName} ·{" "}
+              {change.response.change.source.storeUrl}
+            </span>
+            {change.response.change.plugin.providers.length > 0 && (
+              <span>
+                Comic Providers: {change.response.change.plugin.providers
+                  .map((provider) => `${provider.name} (${provider.language})`)
+                  .join(", ")}
+              </span>
+            )}
+          </div>
+        )}
+      </form>
 
       {state.kind === "loading" && (
         <p className="catalog-notice" aria-live="polite">
@@ -163,6 +339,19 @@ export function SourcePlugins() {
                       <dd>{new Date(entry.observedAt).toLocaleString()}</dd>
                     </div>
                   </dl>
+                  {entry.providers.length > 0 && (
+                    <div className="plugin-providers">
+                      <strong>Comic Providers</strong>
+                      <ul>
+                        {entry.providers.map((provider) => (
+                          <li key={provider.key}>
+                            <span>{provider.name}</span>
+                            <code>{provider.language}</code>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {entry.bindingsRefreshRequired && (
                     <p className="refresh-required">
                       Source Bindings require explicit refresh.

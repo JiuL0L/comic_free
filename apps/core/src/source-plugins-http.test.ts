@@ -11,6 +11,13 @@ import {
 
 import type { CatalogAdapter } from "./catalog-adapter.ts";
 import { CatalogStore } from "./catalog-store.ts";
+import {
+  FIXTURE_CHAPTER_KEY,
+  FIXTURE_COMIC_KEY,
+  FixtureReadingAdapter,
+} from "./reading-adapter.ts";
+import { ReadingService, ReadingServiceError } from "./reading-service.ts";
+import { ReadingStore } from "./reading-store.ts";
 import { createLocalCoreServer } from "./server.ts";
 
 const OUTPUT_ROOT = path.resolve(
@@ -154,6 +161,71 @@ test("an unexpected adapter error returns an error envelope and keeps the catalo
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     store.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("catalog refresh invalidates sessions for a non-readable Source Plugin", async () => {
+  await mkdir(OUTPUT_ROOT, { recursive: true });
+  const directory = await mkdtemp(path.join(OUTPUT_ROOT, "session-refresh-"));
+  const databasePath = path.join(directory, "comic-free.sqlite");
+  const catalogStore = new CatalogStore(databasePath);
+  const readingStore = new ReadingStore(databasePath);
+  const readingService = new ReadingService(
+    new FixtureReadingAdapter(),
+    readingStore,
+  );
+  const adapter: CatalogAdapter = {
+    refresh: async () => ({
+      outcome: "success",
+      observedAt: "2026-09-04T12:00:00.000Z",
+      entries: [
+        {
+          name: "Comic Free Fixture Reader",
+          pluginKey: "fixture:reader",
+          reasonCode: "missing",
+          removalEvidence: "none",
+          reportedObsolete: false,
+          status: "missing",
+          version: "1.0.0",
+        },
+      ],
+    }),
+  };
+  const session = (
+    await readingService.createSession({
+      chapterKey: FIXTURE_CHAPTER_KEY,
+      comicKey: FIXTURE_COMIC_KEY,
+      sourcePluginKey: "fixture:reader",
+    })
+  ).session;
+  const server = createLocalCoreServer({
+    adapter,
+    catalogStore,
+    readingService,
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert(address && typeof address === "object");
+    await fetch(
+      `http://127.0.0.1:${address.port}${SOURCE_PLUGINS_REFRESH_PATH}`,
+      { method: "POST" },
+    );
+    await assert.rejects(
+      readingService.readPage(session.id, 0),
+      (error: unknown) =>
+        error instanceof ReadingServiceError &&
+        error.code === "reader_session_not_found",
+    );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    readingStore.close();
+    catalogStore.close();
     await rm(directory, { recursive: true, force: true });
   }
 });

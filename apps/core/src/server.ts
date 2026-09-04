@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import {
   CORE_HEALTH_PATH,
   PLUGIN_HOST_STATUS_PATH,
+  SOURCE_PLUGIN_CHANGES_PATH,
   SOURCE_PLUGINS_PATH,
   SOURCE_PLUGINS_REFRESH_PATH,
   WEB_UI_ORIGIN,
@@ -15,12 +16,15 @@ import type { CatalogStore } from "./catalog-store.ts";
 import { writeJson } from "./http-response.ts";
 import { createReadingHttpHandler } from "./reading-http.ts";
 import type { ReadingService } from "./reading-service.ts";
+import { createSourcePluginChangeHttpHandler } from "./source-plugin-change-http.ts";
+import type { SourcePluginChangeService } from "./source-plugin-change.ts";
 
 export interface LocalCoreServerOptions {
   adapter: CatalogAdapter;
   catalogStore: CatalogStore;
   pluginHostStatus?: () => PluginHostStatusResponse;
   readingService?: ReadingService;
+  sourcePluginChangeService?: SourcePluginChangeService;
 }
 
 const NOT_CONFIGURED: PluginHostStatusResponse = {
@@ -35,41 +39,58 @@ async function refreshCatalog(
   response: ServerResponse,
   adapter: CatalogAdapter,
   catalogStore: CatalogStore,
+  readingService?: ReadingService,
+  sourcePluginChangeService?: SourcePluginChangeService,
 ): Promise<void> {
-  try {
-    const refresh = await adapter.refresh();
-    if (refresh.outcome === "success") {
-      catalogStore.recordSuccessfulRefresh(refresh);
-    } else {
-      catalogStore.recordFailedRefresh(refresh);
-    }
-    writeJson(response, 200, catalogStore.readCatalog());
-  } catch {
-    const message = "The Source Plugin catalog refresh failed unexpectedly.";
+  const execute = async () => {
     try {
-      catalogStore.recordFailedRefresh({
-        observedAt: new Date().toISOString(),
-        reasonCode: "unknown",
-        message,
-      });
+      const refresh = await adapter.refresh();
+      if (refresh.outcome === "success") {
+        catalogStore.recordSuccessfulRefresh(refresh);
+      } else {
+        catalogStore.recordFailedRefresh(refresh);
+      }
+      const catalog = catalogStore.readCatalog();
+      if (readingService) {
+        for (const entry of catalog.entries) {
+          if (entry.status !== "healthy" || entry.bindingsRefreshRequired) {
+            readingService.invalidateSourcePlugin(entry.pluginKey);
+          }
+        }
+      }
+      writeJson(response, 200, catalog);
     } catch {
-      writeJson(response, 500, {
+      const message = "The Source Plugin catalog refresh failed unexpectedly.";
+      try {
+        catalogStore.recordFailedRefresh({
+          observedAt: new Date().toISOString(),
+          reasonCode: "unknown",
+          message,
+        });
+      } catch {
+        writeJson(response, 500, {
+          error: {
+            code: "catalog_state_write_failed",
+            message: "Comic Free could not record the catalog refresh outcome.",
+            retryable: true,
+          },
+        });
+        return;
+      }
+
+      writeJson(response, 502, {
         error: {
-          code: "catalog_state_write_failed",
-          message: "Comic Free could not record the catalog refresh outcome.",
+          code: "source_plugin_refresh_failed",
+          message,
           retryable: true,
         },
       });
-      return;
     }
-
-    writeJson(response, 502, {
-      error: {
-        code: "source_plugin_refresh_failed",
-        message,
-        retryable: true,
-      },
-    });
+  };
+  if (sourcePluginChangeService) {
+    await sourcePluginChangeService.runExclusive(execute);
+  } else {
+    await execute();
   }
 }
 
@@ -78,9 +99,13 @@ export function createLocalCoreServer({
   catalogStore,
   pluginHostStatus,
   readingService,
+  sourcePluginChangeService,
 }: LocalCoreServerOptions) {
   const handleReading = readingService
     ? createReadingHttpHandler(readingService)
+    : null;
+  const handleSourcePluginChange = sourcePluginChangeService
+    ? createSourcePluginChangeHttpHandler(sourcePluginChangeService)
     : null;
 
   return createServer((request, response) => {
@@ -113,7 +138,22 @@ export function createLocalCoreServer({
     }
 
     if (request.method === "POST" && request.url === SOURCE_PLUGINS_REFRESH_PATH) {
-      void refreshCatalog(response, adapter, catalogStore);
+      void refreshCatalog(
+        response,
+        adapter,
+        catalogStore,
+        readingService,
+        sourcePluginChangeService,
+      );
+      return;
+    }
+
+    if (
+      handleSourcePluginChange &&
+      new URL(request.url ?? "/", "http://127.0.0.1").pathname ===
+        SOURCE_PLUGIN_CHANGES_PATH
+    ) {
+      void handleSourcePluginChange(request, response);
       return;
     }
 

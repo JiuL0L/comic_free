@@ -11,6 +11,8 @@ export const SOURCE_PLUGINS_PATH = "/api/v1/source-plugins" as const;
 export const SOURCE_PLUGINS_URL = `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGINS_PATH}`;
 export const SOURCE_PLUGINS_REFRESH_PATH = "/api/v1/source-plugins/refresh" as const;
 export const SOURCE_PLUGINS_REFRESH_URL = `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGINS_REFRESH_PATH}`;
+export const SOURCE_PLUGIN_CHANGES_PATH = "/api/v1/source-plugin-changes" as const;
+export const SOURCE_PLUGIN_CHANGES_URL = `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`;
 export const WEB_UI_HOST = "127.0.0.1" as const;
 export const WEB_UI_PORT = 5173;
 export const WEB_UI_ORIGIN = `http://${WEB_UI_HOST}:${WEB_UI_PORT}`;
@@ -95,6 +97,7 @@ export interface SourcePluginCatalogEntry {
   name: string;
   observedAt: string;
   pluginKey: string;
+  providers: NormalizedComicProvider[];
   reasonCode: SourcePluginReasonCode | null;
   status: SourcePluginStatus;
   version: string | null;
@@ -110,6 +113,53 @@ export interface CatalogRefreshState {
 export interface SourcePluginCatalogResponse {
   entries: SourcePluginCatalogEntry[];
   lastRefresh: CatalogRefreshState;
+}
+
+export const SOURCE_PLUGIN_CHANGE_ACTIONS = [
+  "install",
+  "update",
+  "disable",
+  "restore",
+] as const;
+
+export type SourcePluginChangeAction = (typeof SOURCE_PLUGIN_CHANGE_ACTIONS)[number];
+export type SourcePluginChangeOutcome = "successful" | "restart_required";
+
+export interface ExtensionStoreCodeSource {
+  expectedVersion: string | null;
+  kind: "extension_store";
+  packageName: string;
+  storeUrl: string;
+}
+
+export interface SourcePluginChangeRequest {
+  action: SourcePluginChangeAction;
+  approval: { approved: true };
+  source: ExtensionStoreCodeSource;
+}
+
+export interface NormalizedComicProvider {
+  key: string;
+  language: string;
+  name: string;
+}
+
+export interface SourcePluginChangeResponse {
+  catalog: SourcePluginCatalogResponse;
+  change: {
+    action: SourcePluginChangeAction;
+    completedAt: string;
+    message: string;
+    outcome: SourcePluginChangeOutcome;
+    plugin: {
+      name: string;
+      pluginKey: string;
+      providers: NormalizedComicProvider[];
+      status: SourcePluginStatus;
+      version: string | null;
+    };
+    source: ExtensionStoreCodeSource;
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -149,6 +199,141 @@ function requireEnum<T extends string>(
     throw new TypeError(`Invalid ${field}: unsupported value "${String(value)}".`);
   }
   return value as T;
+}
+
+function requireExactFields(
+  value: Record<string, unknown>,
+  context: string,
+  fields: readonly string[],
+): void {
+  const unexpected = Object.keys(value).find((key) => !fields.includes(key));
+  if (unexpected) {
+    throw new TypeError(`Invalid ${context}: unexpected field "${unexpected}".`);
+  }
+}
+
+function parseNormalizedProviders(value: unknown, context: string): NormalizedComicProvider[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`Invalid ${context}: expected an array.`);
+  }
+  return value.map((candidate, index) => {
+    const provider = requireRecord(candidate, `${context}[${index}]`);
+    return {
+      key: requireString(provider.key, `${context}[${index}].key`),
+      language: requireString(provider.language, `${context}[${index}].language`),
+      name: requireString(provider.name, `${context}[${index}].name`),
+    };
+  });
+}
+
+function parseExtensionStoreCodeSource(
+  value: unknown,
+  action?: SourcePluginChangeAction,
+): ExtensionStoreCodeSource {
+  const source = requireRecord(value, "source");
+  requireExactFields(source, "source", [
+    "expectedVersion",
+    "kind",
+    "packageName",
+    "storeUrl",
+  ]);
+  if (source.kind !== "extension_store") {
+    throw new TypeError('Invalid source.kind: expected "extension_store".');
+  }
+  const storeUrl = requireString(source.storeUrl, "source.storeUrl");
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(storeUrl);
+  } catch {
+    throw new TypeError("Invalid source.storeUrl: expected an absolute URL.");
+  }
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new TypeError("Invalid source.storeUrl: expected an HTTP(S) URL.");
+  }
+  if (parsedUrl.username || parsedUrl.password) {
+    throw new TypeError("Invalid source.storeUrl: embedded credentials are not allowed.");
+  }
+  const expectedVersion = requireNullableString(
+    source.expectedVersion,
+    "source.expectedVersion",
+  );
+  if (action !== undefined && action !== "disable" && expectedVersion === null) {
+    throw new TypeError(
+      `Invalid source.expectedVersion: ${action} requires an explicitly approved version.`,
+    );
+  }
+  return {
+    expectedVersion,
+    kind: "extension_store",
+    packageName: requireString(source.packageName, "source.packageName"),
+    storeUrl,
+  };
+}
+
+export function parseSourcePluginChangeRequest(value: unknown): SourcePluginChangeRequest {
+  const request = requireRecord(value, "Source Plugin change request");
+  requireExactFields(request, "Source Plugin change request", [
+    "action",
+    "approval",
+    "source",
+  ]);
+  const action = requireEnum(
+    request.action,
+    "action",
+    SOURCE_PLUGIN_CHANGE_ACTIONS,
+  );
+  const approval = requireRecord(request.approval, "approval");
+  requireExactFields(approval, "approval", ["approved"]);
+  if (approval.approved !== true) {
+    throw new TypeError(
+      "Invalid approval.approved: explicit user approval is required before changing third-party code.",
+    );
+  }
+  return {
+    action,
+    approval: { approved: true },
+    source: parseExtensionStoreCodeSource(request.source, action),
+  };
+}
+
+export function parseSourcePluginChangeResponse(value: unknown): SourcePluginChangeResponse {
+  const response = requireRecord(value, "Source Plugin change response");
+  const change = requireRecord(response.change, "change");
+  const plugin = requireRecord(change.plugin, "change.plugin");
+  const providers = parseNormalizedProviders(
+    plugin.providers,
+    "change.plugin.providers",
+  );
+
+  return {
+    catalog: parseSourcePluginCatalogResponse(response.catalog),
+    change: {
+      action: requireEnum(
+        change.action,
+        "change.action",
+        SOURCE_PLUGIN_CHANGE_ACTIONS,
+      ),
+      completedAt: requireTimestamp(change.completedAt, "change.completedAt"),
+      message: requireString(change.message, "change.message"),
+      outcome: requireEnum(
+        change.outcome,
+        "change.outcome",
+        ["successful", "restart_required"] as const,
+      ),
+      plugin: {
+        name: requireString(plugin.name, "change.plugin.name"),
+        pluginKey: requireString(plugin.pluginKey, "change.plugin.pluginKey"),
+        providers,
+        status: requireEnum(
+          plugin.status,
+          "change.plugin.status",
+          SOURCE_PLUGIN_STATUSES,
+        ),
+        version: requireNullableString(plugin.version, "change.plugin.version"),
+      },
+      source: parseExtensionStoreCodeSource(change.source),
+    },
+  };
 }
 
 function requireLiteral<K extends keyof HealthResponse>(
@@ -278,6 +463,10 @@ export function parseSourcePluginCatalogResponse(
       pluginKey: requireString(entry.pluginKey, `entries[${index}].pluginKey`),
       name: requireString(entry.name, `entries[${index}].name`),
       version: requireNullableString(entry.version, `entries[${index}].version`),
+      providers: parseNormalizedProviders(
+        entry.providers ?? [],
+        `entries[${index}].providers`,
+      ),
       status,
       reasonCode,
       observedAt: requireTimestamp(entry.observedAt, `entries[${index}].observedAt`),

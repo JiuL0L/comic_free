@@ -208,6 +208,80 @@ h3 {
   margin-top: 0.5rem;
 }
 
+.plugin-change-form {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #d4d2ca;
+  border-left: 4px solid #c7a84b;
+  border-radius: 4px;
+  background: #fbfaf6;
+}
+
+.plugin-change-heading {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.8fr) minmax(18rem, 1.2fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.plugin-change-heading .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.plugin-change-heading p:last-child {
+  margin: 0;
+  color: #686c65;
+  line-height: 1.5;
+}
+
+.plugin-change-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.plugin-change-fields label {
+  display: grid;
+  gap: 0.35rem;
+  color: #4b4f49;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.plugin-change-fields input,
+.plugin-change-fields select {
+  min-width: 0;
+  border: 1px solid #aaa9a2;
+  border-radius: 3px;
+  padding: 0.65rem 0.7rem;
+  color: #202320;
+  background: #fff;
+  font: inherit;
+  font-weight: 500;
+}
+
+.plugin-approval {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  color: #4b4f49;
+  line-height: 1.45;
+}
+
+.plugin-approval input {
+  margin-top: 0.2rem;
+}
+
+.plugin-change-form > button {
+  width: fit-content;
+}
+
+.change-success {
+  border-left: 4px solid #3b7a57;
+}
+
 .plugin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
@@ -277,6 +351,38 @@ h3 {
   font-size: 0.78rem;
 }
 
+.plugin-providers {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #d4d2ca;
+}
+
+.plugin-providers > strong {
+  color: #686c65;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.plugin-providers ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-providers li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.plugin-providers code {
+  color: #686c65;
+  font-size: 0.72rem;
+}
+
 .refresh-required {
   margin: 1rem 0 0;
   padding-top: 0.75rem;
@@ -293,6 +399,15 @@ h3 {
   }
 
   .section-heading button {
+    width: 100%;
+  }
+
+  .plugin-change-heading,
+  .plugin-change-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .plugin-change-form > button {
     width: 100%;
   }
 }

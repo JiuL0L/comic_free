@@ -147,3 +147,40 @@ test("enforces foreign keys and deletes a Library Item only through an explicit 
     removeTestDirectory(directory);
   }
 });
+
+test("Source Plugin changes preserve local reading state while bindings require recovery", () => {
+  const directory = createTestDirectory();
+  const databasePath = path.join(directory, "comic-free.sqlite");
+  let store = new ReadingStore(databasePath, () => FIXED_TIME);
+
+  try {
+    const retained = store.retain(CONTEXT);
+
+    assert.equal(
+      store.markSourcePluginBindingsUnavailable("fixture:reader", "disabled"),
+      1,
+    );
+    const disabled = store.get(retained.id);
+    assert.equal(disabled?.sourceBinding.availability, "unavailable");
+    assert.equal(disabled?.sourceBinding.reasonCode, "disabled");
+    assert.deepEqual(disabled?.snapshot, retained.snapshot);
+    assert.deepEqual(disabled?.progress, retained.progress);
+
+    assert.equal(store.markSourcePluginBindingsRefreshRequired("fixture:reader"), 1);
+    const restored = store.get(retained.id);
+    assert.equal(restored?.sourceBinding.availability, "refresh_required");
+    assert.equal(restored?.sourceBinding.reasonCode, null);
+    assert.deepEqual(restored?.snapshot, retained.snapshot);
+    assert.deepEqual(restored?.progress, retained.progress);
+
+    store.close();
+    store = new ReadingStore(databasePath, () => "2026-09-04T13:00:00.000Z");
+    assert.equal(
+      store.get(retained.id)?.sourceBinding.availability,
+      "refresh_required",
+    );
+  } finally {
+    store.close();
+    removeTestDirectory(directory);
+  }
+});
