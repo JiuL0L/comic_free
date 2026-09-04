@@ -42,9 +42,7 @@ export function PluginHostStatus() {
       try {
         const status = await requestStatus(controller.signal);
         setState({ kind: "loaded", status });
-        if (status.state === "starting" || status.state === "stopping") {
-          timer = setTimeout(() => void load(), 500);
-        }
+        timer = setTimeout(() => void load(), 500);
       } catch (error) {
         if (!controller.signal.aborted) {
           setState({

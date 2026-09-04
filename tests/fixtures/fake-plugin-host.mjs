@@ -9,6 +9,9 @@ const shutdownToken = process.env.FAKE_PLUGIN_HOST_SHUTDOWN_TOKEN;
 
 if (!Number.isInteger(port) || !runtimeRoot || !shutdownToken) process.exit(64);
 if (mode === "early-exit") process.exit(23);
+if (process.env.COMIC_FREE_AMBIENT_SECRET) {
+  await writeFile(path.join(runtimeRoot, "ambient-secret-leaked"), "yes", "utf8");
+}
 
 const server = createServer((request, response) => {
   if (
@@ -52,6 +55,7 @@ if (
     console.log("fake Plugin Host ready");
     console.error("Authorization: Bearer should-not-be-logged");
     console.error("Cookie: session=should-not-be-logged");
+    console.error("X-Api-Key: should-not-be-logged-either");
     if (mode === "unexpected-exit") setTimeout(() => process.exit(42), 250);
   });
 }

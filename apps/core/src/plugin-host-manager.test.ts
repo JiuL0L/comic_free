@@ -279,6 +279,16 @@ test("classifies a running child that misses its readiness deadline as startup_t
   try {
     await assert.rejects(manager.start(), /startup deadline/i);
     assert.equal(manager.status().state, "startup_timeout");
+    await access(path.join(runtimeRoot, "shutdown-hook-ran"));
+
+    const rebound = createServer();
+    await new Promise<void>((resolve, reject) => {
+      rebound.once("error", reject);
+      rebound.listen(port, "127.0.0.1", resolve);
+    });
+    await new Promise<void>((resolve, reject) =>
+      rebound.close((error) => (error ? reject(error) : resolve())),
+    );
   } finally {
     await manager.stop().catch(() => undefined);
     await rm(testRoot, { force: true, recursive: true });
@@ -404,7 +414,49 @@ test("captures structured Plugin Host logs and redacts sensitive headers", async
     assert.match(log, /"stream":"stderr"/);
     assert.match(log, /\[REDACTED\]/);
     assert.doesNotMatch(log, /should-not-be-logged/);
+    assert.doesNotMatch(log, /X-Api-Key/);
   } finally {
+    await manager.stop().catch(() => undefined);
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("does not inherit unrelated ambient credentials", async () => {
+  await mkdir(OUTPUT_ROOT, { recursive: true });
+  const testRoot = await mkdtemp(path.join(OUTPUT_ROOT, "environment-"));
+  const runtimeRoot = path.join(testRoot, "runtime");
+  const port = await randomLoopbackPort();
+  const fixturePath = path.resolve(
+    import.meta.dirname,
+    "../../../tests/fixtures/fake-plugin-host.mjs",
+  );
+  const manager = new PluginHostManager({
+    artifactPath: fixturePath,
+    command: process.execPath,
+    commandArguments: [fixturePath],
+    environment: {
+      FAKE_PLUGIN_HOST_MODE: "ready",
+      FAKE_PLUGIN_HOST_PORT: String(port),
+      FAKE_PLUGIN_HOST_RUNTIME_ROOT: runtimeRoot,
+      FAKE_PLUGIN_HOST_SHUTDOWN_TOKEN: "test-only-token",
+    },
+    internalPort: port,
+    logRoot: path.join(testRoot, "logs"),
+    readinessUrl: `http://127.0.0.1:${port}/api/graphql`,
+    runtimeRoot,
+    shutdownTimeoutMs: 1_000,
+    shutdownToken: "test-only-token",
+    shutdownUrl: `http://127.0.0.1:${port}/comic-free/shutdown`,
+    startupTimeoutMs: 1_000,
+  });
+  process.env.COMIC_FREE_AMBIENT_SECRET = "must-not-reach-child";
+
+  try {
+    await manager.start();
+    await manager.stop();
+    await assert.rejects(access(path.join(runtimeRoot, "ambient-secret-leaked")));
+  } finally {
+    delete process.env.COMIC_FREE_AMBIENT_SECRET;
     await manager.stop().catch(() => undefined);
     await rm(testRoot, { force: true, recursive: true });
   }

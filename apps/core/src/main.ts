@@ -107,7 +107,7 @@ function initialPluginHostStatus(
 function safeErrorMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : fallback;
   return message.replace(
-    /\b((?:proxy-)?authorization|cookie|set-cookie)\s*:\s*.*$/gi,
+    /\b((?:proxy-)?authorization|cookie|set-cookie|x-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|password|credential|secret|session)\s*[:=]\s*.*$/gi,
     "$1: [REDACTED]",
   );
 }

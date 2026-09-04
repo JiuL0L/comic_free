@@ -6,7 +6,10 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,7 +19,13 @@ public final class ComicFreeShutdownAgent {
     public static void premain(String agentArguments) throws Exception {
         Map<String, String> arguments = parseArguments(agentArguments);
         int port = Integer.parseInt(required(arguments, "port"));
-        byte[] expectedAuthorization = ("Bearer " + required(arguments, "token"))
+        Path tokenFile = Path.of(new String(
+            Base64.getUrlDecoder().decode(required(arguments, "tokenFileBase64")),
+            StandardCharsets.UTF_8
+        ));
+        String token = Files.readString(tokenFile, StandardCharsets.UTF_8);
+        Files.deleteIfExists(tokenFile);
+        byte[] expectedAuthorization = ("Bearer " + token)
             .getBytes(StandardCharsets.UTF_8);
 
         HttpServer server = HttpServer.create(

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { chmod, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -24,6 +24,7 @@ export interface PluginHostManagerOptions {
   readinessUrl: string;
   runtimeRoot: string;
   shutdownTimeoutMs: number;
+  shutdownCredentialPath?: string;
   shutdownToken: string;
   shutdownUrl: string;
   startupTimeoutMs: number;
@@ -96,6 +97,14 @@ export class PluginHostManager {
       mkdir(this.#options.runtimeRoot, { recursive: true }),
       mkdir(this.#options.logRoot, { recursive: true }),
     ]);
+    if (this.#options.shutdownCredentialPath) {
+      await mkdir(path.dirname(this.#options.shutdownCredentialPath), { recursive: true });
+      await writeFile(this.#options.shutdownCredentialPath, this.#options.shutdownToken, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      await chmod(this.#options.shutdownCredentialPath, 0o600);
+    }
     this.#status = {
       apiVersion: HEALTH_API_VERSION,
       internalPort: this.#options.internalPort,
@@ -108,7 +117,7 @@ export class PluginHostManager {
     const child = spawn(this.#options.command, this.#options.commandArguments, {
       cwd: this.#options.runtimeRoot,
       detached: true,
-      env: { ...process.env, ...this.#options.environment },
+      env: childEnvironment(this.#options.environment),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -154,6 +163,19 @@ export class PluginHostManager {
           state: "startup_timeout",
         };
       }
+      const failedStatus = this.status();
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+        try {
+          await this.stop();
+          this.#status = failedStatus;
+        } catch (cleanupError) {
+          this.#status = {
+            ...failedStatus,
+            message: `${failedStatus.message} Cleanup required an abrupt fallback: ${safeMessage(cleanupError)}`,
+          };
+        }
+      }
+      await this.#removeShutdownCredential();
       throw error;
     }
     this.#status = {
@@ -211,6 +233,7 @@ export class PluginHostManager {
       );
     }
     await this.#logsClosed;
+    await this.#removeShutdownCredential();
 
     this.#child = null;
     this.#status = {
@@ -230,6 +253,7 @@ export class PluginHostManager {
     child.kill("SIGKILL");
     await Promise.race([exit, delay(1_000)]);
     await this.#logsClosed;
+    await this.#removeShutdownCredential();
     this.#child = null;
     this.#status = {
       apiVersion: HEALTH_API_VERSION,
@@ -239,6 +263,12 @@ export class PluginHostManager {
       state: "shutdown_failed",
     };
     throw new Error(this.#status.message);
+  }
+
+  async #removeShutdownCredential(): Promise<void> {
+    if (this.#options.shutdownCredentialPath) {
+      await rm(this.#options.shutdownCredentialPath, { force: true });
+    }
   }
 
   async #waitForReadiness(child: ChildProcess): Promise<void> {
@@ -271,6 +301,45 @@ function describeExit(code: number | null, signal: NodeJS.Signals | null): strin
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+const SAFE_ENVIRONMENT_KEYS = [
+  "APPDATA",
+  "ComSpec",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "JAVA_HOME",
+  "LANG",
+  "LC_ALL",
+  "LOCALAPPDATA",
+  "NUMBER_OF_PROCESSORS",
+  "PATH",
+  "PATHEXT",
+  "PROCESSOR_ARCHITECTURE",
+  "ProgramData",
+  "SystemRoot",
+  "TEMP",
+  "TMP",
+  "TZ",
+  "USERPROFILE",
+  "WINDIR",
+] as const;
+
+function childEnvironment(extra: Record<string, string> | undefined): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const allowed of SAFE_ENVIRONMENT_KEYS) {
+    const actualKey = Object.keys(process.env).find(
+      (candidate) => candidate.toLowerCase() === allowed.toLowerCase(),
+    );
+    if (actualKey && process.env[actualKey] !== undefined) {
+      environment[actualKey] = process.env[actualKey];
+    }
+  }
+  return { ...environment, ...extra };
+}
+
+function safeMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown cleanup failure";
 }
 
 async function sha256(filePath: string): Promise<string> {
@@ -325,9 +394,7 @@ function writeStructuredLine(
   line: string,
 ): void {
   if (!line) return;
-  const message = /\b(?:proxy-authorization|authorization|set-cookie|cookie)\b/i.test(
-    line,
-  )
+  const message = /\b(?:proxy-authorization|authorization|set-cookie|cookie|x-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|password|credential|secret|session)\b\s*[:=]/i.test(line) || /\b(?:bearer|basic)\s+[a-z\d._~+/=-]+/i.test(line)
     ? "[REDACTED]"
     : line.length > 4_096
       ? `${line.slice(0, 4_096)} [TRUNCATED]`

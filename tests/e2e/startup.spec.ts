@@ -114,6 +114,22 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   await expect(page.getByRole("heading", { name: "Plugin Host" })).toBeVisible();
   await expect(page.getByText("Not configured")).toBeVisible();
 
+  await page.route(PLUGIN_HOST_STATUS_URL, async (route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        apiVersion: "v1",
+        internalPort: null,
+        message: "The Plugin Host exited unexpectedly (code 42).",
+        retryable: true,
+        state: "unexpected_exit",
+      }),
+      contentType: "application/json",
+      status: 200,
+    });
+  });
+  await expect(page.getByText("Exited unexpectedly", { exact: true })).toBeVisible();
+  await page.unroute(PLUGIN_HOST_STATUS_URL);
+
   await page.unroute(CORE_HEALTH_URL);
   let shouldFail = true;
   await page.route(CORE_HEALTH_URL, async (route) => {

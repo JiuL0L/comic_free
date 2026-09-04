@@ -29,6 +29,14 @@ export async function createSuwayomiPluginHost(
   while (shutdownPort === options.internalPort) shutdownPort = await randomLoopbackPort();
   const shutdownToken = randomBytes(32).toString("base64url");
   const rootProperty = runtimeRoot.replaceAll("\\", "/");
+  const shutdownCredentialPath = path.join(
+    managedRoot,
+    "shutdown-agent",
+    "shutdown-token",
+  );
+  const encodedCredentialPath = Buffer.from(shutdownCredentialPath, "utf8").toString(
+    "base64url",
+  );
 
   return new PluginHostManager({
     approvedArtifactSha256: options.approvedArtifactSha256,
@@ -36,7 +44,7 @@ export async function createSuwayomiPluginHost(
     command: "java",
     commandArguments: [
       "--add-modules=jdk.httpserver",
-      `-javaagent:${agentJar}=port=${shutdownPort},token=${shutdownToken}`,
+      `-javaagent:${agentJar}=port=${shutdownPort},tokenFileBase64=${encodedCredentialPath}`,
       `-Dsuwayomi.tachidesk.config.server.rootDir=${rootProperty}`,
       "-Dsuwayomi.tachidesk.config.server.ip=127.0.0.1",
       `-Dsuwayomi.tachidesk.config.server.port=${options.internalPort}`,
@@ -53,6 +61,7 @@ export async function createSuwayomiPluginHost(
     readinessUrl: `http://127.0.0.1:${options.internalPort}/api/graphql`,
     runtimeRoot,
     shutdownTimeoutMs: options.shutdownTimeoutMs ?? 30_000,
+    shutdownCredentialPath,
     shutdownToken,
     shutdownUrl: `http://127.0.0.1:${shutdownPort}/comic-free/shutdown`,
     startupTimeoutMs: options.startupTimeoutMs ?? 180_000,

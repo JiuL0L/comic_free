@@ -56,12 +56,16 @@ test("the first-party JVM agent invokes shutdown hooks before the managed JVM ex
     ]);
     const agentJar = await buildJvmShutdownAgent(path.join(testRoot, "agent"));
     const shutdownToken = "jvm-test-token";
+    const shutdownCredentialPath = path.join(testRoot, "agent", "shutdown-token");
+    const encodedCredentialPath = Buffer.from(shutdownCredentialPath, "utf8").toString(
+      "base64url",
+    );
     manager = new PluginHostManager({
       artifactPath: fixtureSource,
       command: "java",
       commandArguments: [
         "--add-modules=jdk.httpserver",
-        `-javaagent:${agentJar}=port=${shutdownPort},token=${shutdownToken}`,
+        `-javaagent:${agentJar}=port=${shutdownPort},tokenFileBase64=${encodedCredentialPath}`,
         "-cp",
         classesRoot,
         "FakeJvmPluginHost",
@@ -73,12 +77,14 @@ test("the first-party JVM agent invokes shutdown hooks before the managed JVM ex
       readinessUrl: `http://127.0.0.1:${internalPort}/api/graphql`,
       runtimeRoot,
       shutdownTimeoutMs: 5_000,
+      shutdownCredentialPath,
       shutdownToken,
       shutdownUrl: `http://127.0.0.1:${shutdownPort}/comic-free/shutdown`,
       startupTimeoutMs: 5_000,
     });
 
     await manager.start();
+    await assert.rejects(access(shutdownCredentialPath));
     const unauthorized = await fetch(
       `http://127.0.0.1:${shutdownPort}/comic-free/shutdown`,
       { method: "POST" },
