@@ -6,6 +6,7 @@ import {
   type HealthResponse,
 } from "@comic-free/contracts";
 
+import { ReadingExperience } from "./ReadingExperience.tsx";
 import { SourcePlugins } from "./SourcePlugins.tsx";
 import { requestJson } from "./api.ts";
 
@@ -98,6 +99,7 @@ export function App() {
         </dl>
       </section>
       <SourcePlugins />
+      <ReadingExperience />
     </main>
   );
 }

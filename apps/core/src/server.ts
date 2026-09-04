@@ -10,15 +10,14 @@ import {
 
 import type { CatalogAdapter } from "./catalog-adapter.ts";
 import type { CatalogStore } from "./catalog-store.ts";
+import { writeJson } from "./http-response.ts";
+import { createReadingHttpHandler } from "./reading-http.ts";
+import type { ReadingService } from "./reading-service.ts";
 
 export interface LocalCoreServerOptions {
   adapter: CatalogAdapter;
   catalogStore: CatalogStore;
-}
-
-function writeJson(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(value));
+  readingService?: ReadingService;
 }
 
 async function refreshCatalog(
@@ -63,10 +62,28 @@ async function refreshCatalog(
   }
 }
 
-export function createLocalCoreServer({ adapter, catalogStore }: LocalCoreServerOptions) {
+export function createLocalCoreServer({
+  adapter,
+  catalogStore,
+  readingService,
+}: LocalCoreServerOptions) {
+  const handleReading = readingService
+    ? createReadingHttpHandler(readingService)
+    : null;
+
   return createServer((request, response) => {
     response.setHeader("Access-Control-Allow-Origin", WEB_UI_ORIGIN);
     response.setHeader("Vary", "Origin");
+
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, {
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+        "Access-Control-Max-Age": "600",
+      });
+      response.end();
+      return;
+    }
 
     if (request.method === "GET" && request.url === CORE_HEALTH_PATH) {
       writeJson(response, 200, createHealthResponse());
@@ -83,16 +100,23 @@ export function createLocalCoreServer({ adapter, catalogStore }: LocalCoreServer
       return;
     }
 
+    if (handleReading) {
+      void handleReading(request, response).then((handled) => {
+        if (!handled) writeNotFound(response);
+      });
+      return;
+    }
+
     writeNotFound(response);
   });
 }
 
 function writeNotFound(response: ServerResponse): void {
   writeJson(response, 404, {
-      error: {
-        code: "route_not_found",
-        message: "The requested Local Core route does not exist.",
-        retryable: false,
-      },
+    error: {
+      code: "route_not_found",
+      message: "The requested Local Core route does not exist.",
+      retryable: false,
+    },
   });
 }
