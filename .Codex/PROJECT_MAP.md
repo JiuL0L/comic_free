@@ -14,7 +14,7 @@ Status: PARTIALLY VERIFIED
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`, awaiting `/to-tickets` decomposition.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; ticket 01 is the current frontier.
 
 ## Planned entrypoints
 
