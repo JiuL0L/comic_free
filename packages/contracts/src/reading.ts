@@ -2,6 +2,7 @@ import { LOCAL_CORE_ORIGIN } from "./index.ts";
 
 export const CATALOG_SEARCH_PATH = "/api/v1/catalog/search" as const;
 export const LIBRARY_ITEMS_PATH = "/api/v1/library-items" as const;
+export const READING_SOURCE_PLUGIN_PATH = "/api/v1/reading/source-plugin" as const;
 export const READER_SESSIONS_PATH = "/api/v1/reader-sessions" as const;
 
 export const FIXTURE_SOURCE_PLUGIN = Object.freeze({
@@ -41,6 +42,13 @@ export interface CatalogSearchItem {
 
 export interface CatalogSearchResponse {
   items: CatalogSearchItem[];
+}
+
+export interface ReadingSourcePluginResponse {
+  sourcePlugin: {
+    key: string;
+    name: string;
+  };
 }
 
 export interface ComicDetailsResponse {
@@ -192,6 +200,21 @@ export function parseCatalogSearchResponse(value: unknown): CatalogSearchRespons
   }
   return {
     items: response.items.map((item, index) => catalogItem(item, `items[${index}]`)),
+  };
+}
+
+export function parseReadingSourcePluginResponse(
+  value: unknown,
+): ReadingSourcePluginResponse {
+  const response = record(value, "reading Source Plugin response");
+  exactFields(response, ["sourcePlugin"], "reading Source Plugin response");
+  const sourcePlugin = record(response.sourcePlugin, "sourcePlugin");
+  exactFields(sourcePlugin, ["key", "name"], "sourcePlugin");
+  return {
+    sourcePlugin: {
+      key: string(sourcePlugin.key, "sourcePlugin.key"),
+      name: string(sourcePlugin.name, "sourcePlugin.name"),
+    },
   };
 }
 

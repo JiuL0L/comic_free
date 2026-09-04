@@ -7,14 +7,14 @@ Status: PARTIALLY VERIFIED
 - Project: `comic_free`
 - Purpose: Local, personal comic browsing client with a WebUI and dynamically installable source-code modules.
 - Repository: `https://github.com/JiuL0L/comic_free.git`; local `main` tracks `origin/main`.
-- Branch: `main`
+- Branch: `codex/05-read-through-suwayomi`
 - Architecture and prototype scope: Confirmed by the user on 2026-09-03; formal implementation started with MVP ticket 01.
 - Validated throwaway prototype: branch `prototype/source-failure-state`, artifact commit `360d6a9`, verdict commit `69729c5`; HTML is intentionally absent from `main`.
 - Validated Suwayomi integration prototype: branch `prototype/suwayomi-integration`, commit `4416fd3`; executable probe code is intentionally absent from `main`.
 - Validated dynamic extension prototype: branch `prototype/mihon-extension-flow`, commit `3ba7eb8`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated MangaDex live-flow prototype: branch `prototype/mangadex-live-flow`, commit `1099106`; executable probe code and third-party artifacts are intentionally absent from `main`.
 - Validated Local Core boundary prototype: branch `prototype/local-core-boundary`, artifact commit `718c179`, verdict commit `7229946`; executable prototype code is intentionally absent from `main`.
-- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01–04 provide the application shell, deterministic reading/retention slice, retained Source Plugin catalog, and approved Suwayomi lifecycle management.
+- Formal MVP specification: `.scratch/comic-free-mvp/spec.md`; status `ready-for-agent`. Seven dependency-ordered implementation tickets are published under `.scratch/comic-free-mvp/issues/`; tickets 01–05 provide the shell, deterministic reading/retention, retained Source Plugin catalog, approved Suwayomi lifecycle, and transient Suwayomi reader sessions.
 
 ## Entrypoints
 
@@ -22,6 +22,7 @@ Status: PARTIALLY VERIFIED
 - Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, the fixture catalog adapter, `ReadingStore`, `ReadingService`, and the optional approved Suwayomi Plugin Host; it is bound to `127.0.0.1:3210`.
 - Plugin Host lifecycle: `apps/core/src/plugin-host-manager.ts` owns validated spawn/readiness/status/logging/shutdown behavior; `apps/core/src/suwayomi-plugin-host.ts` supplies isolated Suwayomi arguments; `apps/core/java/comicfree/shutdown/ComicFreeShutdownAgent.java` provides the application-level JVM shutdown endpoint.
 - Deterministic adapter: `apps/core/src/reading-adapter.ts`; implements the replaceable catalog/page interface with one named Source Plugin, durable provider keys, and three exact local SVG pages.
+- Suwayomi reading adapter: `apps/core/src/suwayomi-reading-adapter.ts`; validates GraphQL responses, derives durable keys from provider URLs, re-resolves runtime ids, and fetches bounded image bytes only from the configured loopback Plugin Host.
 - Shared contracts: `packages/contracts/src/index.ts` and `packages/contracts/src/reading.ts`; runtime-validate the `v1` health, Plugin Host lifecycle, catalog, reader-session, Library Item, error, and Reading Progress boundaries.
 - Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
 - Source plugin host: approved Suwayomi process lifecycle is scaffolded; trusted Mihon extension loading and source translation remain later tickets.
@@ -67,6 +68,7 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 - Ticket 02 focused verification: `pnpm exec tsx --test packages/contracts/src/reading.test.ts apps/core/src/reading-adapter.test.ts apps/core/src/reading-store.test.ts apps/core/src/reading-http.test.ts` and `pnpm exec playwright test tests/e2e/reading.spec.ts`.
 - Ticket 02 full verification: `pnpm verify`; includes exact fixture-byte checks, transaction rollback/foreign-key/reopen tests, REST negative cases, the browser-visible reading journey, source failure, session invalidation, and retained-directory restart.
 - Ticket 03 verification log: `.local-data/test-output/03-source-plugin-catalog/verify.log`; the isolated branch passed contract, SQLite, REST, startup, catalog-failure, restart, confirmed-removal, and recovery checks without network access.
+- Ticket 05 focused verification: recorded Suwayomi generations plus REST restart tests prove runtime-id renewal, opaque sessions, stable errors, exact image bytes, and bounded proxy behavior without Java or network. `pnpm verify:suwayomi-reading` remains opt-in for an already approved running runtime.
 - Prototype verification: one command starts the Local Core and its Suwayomi child process; install, update, or disable a compatible trusted Mihon extension without rebuilding the WebUI or reinstalling the client; search, open details and chapters, display proxied pages, then disable the source and restart while retaining one Library Item and its Reading Progress.
 - Required deterministic checks use local fixtures for search, details, chapters, image proxying, library retention, unavailable bindings, and restart persistence; they do not require a live Comic Provider.
 - Candidate live source: `MANGA Plus by SHUEISHA`; current local reachability and readable titles remain UNVERIFIED.
@@ -81,7 +83,7 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 - Local Core `127.0.0.1:3210` REST/JSON facade, Comic Free-owned SQLite state, exact fixture PNG byte proxying, source-failure retention, and restart persistence: VALIDATED with deterministic fixtures on 2026-09-03 by artifact commit `718c179` and verdict commit `7229946`; two consecutive full checks passed.
 - Live MangaDex page image bytes and browser rendering through a temporary loopback diagnostic proxy: VALIDATED on 2026-09-04 (`200 image/jpeg`, 547622 bytes, with Source Plugin name, comic title, chapter, and page count visible). This is evidence for the boundary, not a formal Local Core adapter.
 - Suwayomi-local numeric chapter/page references becoming stale after restart and requiring fresh chapter/page resolution: OBSERVED on 2026-09-04; they must not be persisted as durable Comic Free identity.
-- Formal Suwayomi-to-Local-Core translation and product Browser WebUI rendering: UNVERIFIED.
+- Formal Suwayomi-to-Local-Core translation and Browser WebUI reader-session renewal: VALIDATED deterministically with recorded Suwayomi-shaped fixtures; a live configured-runtime run remains optional and UNVERIFIED.
 - Windows application-level graceful Suwayomi/H2 shutdown: VALIDATED on 2026-09-04 with official Suwayomi `v2.3.2243` at SHA-256 `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5`. Two consecutive runs reached GraphQL readiness, queried the database, stopped through the in-JVM shutdown-agent endpoint, released port `4568`, left no H2 lock, and reopened `runtime/database.mv.db` cleanly.
 - Formal fixture-backed Comic Free REST contracts, initial reading-state migration, transactional retention, exact-byte session proxy, Browser WebUI journey, restart persistence, and approved Suwayomi process lifecycle: VALIDATED by tickets 02–04. Suwayomi catalog/reader translation remains UNVERIFIED.
 

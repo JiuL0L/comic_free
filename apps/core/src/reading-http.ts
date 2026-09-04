@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   CATALOG_SEARCH_PATH,
   LIBRARY_ITEMS_PATH,
+  READING_SOURCE_PLUGIN_PATH,
   READER_SESSIONS_PATH,
   SOURCE_BINDING_REASON_CODES,
   parseCreateReaderSessionRequest,
@@ -133,12 +134,22 @@ export function createReadingHttpHandler(service: ReadingService) {
     );
     const known =
       pathname === CATALOG_SEARCH_PATH ||
+      pathname === READING_SOURCE_PLUGIN_PATH ||
       pathname === READER_SESSIONS_PATH ||
       pathname === LIBRARY_ITEMS_PATH ||
       Boolean(detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch);
     if (!known) return false;
 
     try {
+      if (pathname === READING_SOURCE_PLUGIN_PATH) {
+        if (request.method !== "GET") {
+          methodNotAllowed(response, "GET");
+          return true;
+        }
+        writeJson(response, 200, service.getSourcePlugin());
+        return true;
+      }
+
       if (pathname === CATALOG_SEARCH_PATH) {
         if (request.method !== "GET") {
           methodNotAllowed(response, "GET");

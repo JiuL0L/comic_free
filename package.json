@@ -10,6 +10,7 @@
     "test:unit": "tsx --test packages/contracts/src/*.test.ts apps/core/src/*.test.ts scripts/*.test.ts",
     "test:e2e": "playwright test",
     "verify:suwayomi": "tsx scripts/verify-suwayomi-lifecycle.ts",
+    "verify:suwayomi-reading": "tsx scripts/verify-suwayomi-reading.ts",
     "verify": "pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:e2e"
   },
   "devDependencies": {

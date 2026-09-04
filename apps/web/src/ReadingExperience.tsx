@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 import {
-  FIXTURE_SOURCE_PLUGIN,
   LIBRARY_ITEMS_PATH,
   LOCAL_CORE_ORIGIN,
+  READING_SOURCE_PLUGIN_PATH,
   READER_SESSIONS_PATH,
   catalogSearchUrl,
   comicChaptersUrl,
@@ -15,17 +15,17 @@ import {
   parseLibraryItemResponse,
   parseLibraryItemsResponse,
   parseReaderSessionResponse,
+  parseReadingSourcePluginResponse,
   readerPageUrl,
   type CatalogChaptersResponse,
   type CatalogSearchItem,
   type ComicDetailsResponse,
   type LibraryItem,
   type ReaderSessionResponse,
+  type ReadingSourcePluginResponse,
 } from "@comic-free/contracts";
 
 import "./reading.css";
-
-const SOURCE_PLUGINS = [FIXTURE_SOURCE_PLUGIN] as const;
 
 class RequestError extends Error {
   constructor(
@@ -96,6 +96,10 @@ const reasonLabels: Record<string, string> = {
 };
 
 export function ReadingExperience() {
+  const [sourcePlugins, setSourcePlugins] = useState<
+    ReadingSourcePluginResponse["sourcePlugin"][]
+  >([]);
+  const [sourcePluginError, setSourcePluginError] = useState<string | null>(null);
   const [sourcePluginKey, setSourcePluginKey] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
@@ -112,6 +116,27 @@ export function ReadingExperience() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [libraryAttempt, setLibraryAttempt] = useState(0);
   const [library, setLibrary] = useState<LibraryState>({ kind: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void requestJson(
+      `${LOCAL_CORE_ORIGIN}${READING_SOURCE_PLUGIN_PATH}`,
+      { signal: controller.signal },
+      parseReadingSourcePluginResponse,
+    ).then(
+      (response) => setSourcePlugins([response.sourcePlugin]),
+      (error: unknown) => {
+        if (!controller.signal.aborted) {
+          setSourcePluginError(
+            error instanceof Error
+              ? error.message
+              : "The reading Source Plugin could not be loaded.",
+          );
+        }
+      },
+    );
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -229,6 +254,33 @@ export function ReadingExperience() {
     }
   };
 
+  const renewReaderSession = async () => {
+    if (!reader) return;
+    const libraryItemId = retainedId;
+    try {
+      const response = await requestJson(
+        `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
+        json(
+          "POST",
+          libraryItemId
+            ? { libraryItemId }
+            : {
+                chapterKey: reader.chapterKey,
+                comicKey: reader.comicKey,
+                sourcePluginKey: reader.sourcePluginKey,
+              },
+        ),
+        parseReaderSessionResponse,
+      );
+      acceptSession(response.session);
+      if (libraryItemId) setRetainedId(libraryItemId);
+    } catch (error) {
+      setSaveMessage(
+        error instanceof Error ? error.message : "The reader session could not be renewed.",
+      );
+    }
+  };
+
   const retain = async () => {
     if (!reader) return;
     try {
@@ -290,7 +342,7 @@ export function ReadingExperience() {
               }}
             >
               <option value="">Choose a Source Plugin</option>
-              {SOURCE_PLUGINS.map((plugin) => (
+              {sourcePlugins.map((plugin) => (
                 <option key={plugin.key} value={plugin.key}>{plugin.name}</option>
               ))}
             </select>
@@ -310,7 +362,11 @@ export function ReadingExperience() {
           </button>
         </div>
 
-        {search.kind === "loading" && <p className="reading-notice">Searching {SOURCE_PLUGINS.find((plugin) => plugin.key === sourcePluginKey)?.name ?? "Source Plugin"}…</p>}
+        {sourcePluginError && (
+          <p className="reading-notice error" role="alert">{sourcePluginError}</p>
+        )}
+
+        {search.kind === "loading" && <p className="reading-notice">Searching {sourcePlugins.find((plugin) => plugin.key === sourcePluginKey)?.name ?? "Source Plugin"}…</p>}
         {search.kind === "empty" && <p className="reading-notice">No comics matched this search.</p>}
         {search.kind === "failed" && (
           <div className="reading-notice error" role="alert">
@@ -379,6 +435,9 @@ export function ReadingExperience() {
                 <span>The page could not be loaded. Your reader context was preserved.</span>
                 <button type="button" onClick={() => { setImageState({ kind: "loading" }); setImageAttempt((value) => value + 1); }}>
                   Retry page
+                </button>
+                <button type="button" onClick={() => void renewReaderSession()}>
+                  Renew reader session
                 </button>
               </div>
             )}

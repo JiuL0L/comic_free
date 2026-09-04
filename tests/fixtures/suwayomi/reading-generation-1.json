@@ -1,0 +1,60 @@
+{
+  "search": {
+    "data": {
+      "fetchSourceManga": {
+        "hasNextPage": false,
+        "mangas": [
+          {
+            "id": 101,
+            "title": "Deterministic Adventure",
+            "url": "/title/deterministic-adventure",
+            "thumbnailUrl": "https://images.example.invalid/adventure.jpg"
+          }
+        ]
+      }
+    }
+  },
+  "details": {
+    "data": {
+      "fetchManga": {
+        "manga": {
+          "id": 101,
+          "title": "Deterministic Adventure",
+          "description": "A recorded Suwayomi-shaped comic.",
+          "url": "/title/deterministic-adventure",
+          "thumbnailUrl": "https://images.example.invalid/adventure.jpg"
+        }
+      }
+    }
+  },
+  "chapters": {
+    "data": {
+      "fetchChapters": {
+        "chapters": [
+          {
+            "id": 201,
+            "name": "Chapter 1 · The Recorded Beginning",
+            "url": "/title/deterministic-adventure/chapter/one",
+            "chapterNumber": 1,
+            "scanlator": "Fixture Group"
+          }
+        ]
+      }
+    }
+  },
+  "pages": {
+    "data": {
+      "fetchChapterPages": {
+        "chapter": {
+          "id": 201,
+          "name": "Chapter 1 · The Recorded Beginning",
+          "pageCount": 2
+        },
+        "pages": [
+          "/api/v1/manga/101/chapter/201/page/0",
+          "/api/v1/manga/101/chapter/201/page/1"
+        ]
+      }
+    }
+  }
+}
