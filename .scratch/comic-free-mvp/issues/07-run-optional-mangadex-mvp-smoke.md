@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: Read through Suwayomi with transient reader sessions; 06: Manage trusted Source Plugin changes.
 
-**Status:** resolved — locally verified; not pushed or merged
+**Status:** resolved — live observation recorded; merged in PR #6 (198d319)
 
 - [x] Before the run, identify the exact existing or proposed Suwayomi and MangaDex artifacts and obtain explicit permission for any new download, update, or third-party execution.
 - [x] The smoke check uses the formal Browser WebUI, Local Core REST/JSON boundary, Suwayomi adapter, and Local Core page proxy rather than a temporary diagnostic page.

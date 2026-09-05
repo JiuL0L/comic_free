@@ -3,9 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { FixtureReadingAdapter } from "./reading-adapter.ts";
+import { FIXTURE_CHAPTER_KEY, FixtureReadingAdapter } from "./reading-adapter.ts";
 import { ReadingService, ReadingServiceError } from "./reading-service.ts";
 import { ReadingStore } from "./reading-store.ts";
+import { CatalogStore } from "./catalog-store.ts";
+import { ReadingProviderRegistry } from "./reading-provider-registry.ts";
+
 
 const ROOT = path.resolve(import.meta.dirname, "../../..");
 const TEST_ROOT = path.join(ROOT, ".local-data", "test-output", "ticket-10");
@@ -89,4 +92,49 @@ test("deletion prevents in-flight resume and catalog session creation from yield
     store.close();
     removeTestDirectory(directory);
   }
+});
+
+test("refreshing a binding isolates identical comic keys belonging to different plugins", async () => {
+  const directory = createTestDirectory();
+  const db = path.join(directory, "comic-free.sqlite");
+  const catalog = new CatalogStore(db);
+  const store = new ReadingStore(db);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => {release = resolve;});
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => {entered = resolve;});
+  let holdB = false;
+  function adapter(plugin: string) {
+    const fixture = new FixtureReadingAdapter({key:'provider:v1:Shared:en',name:'Shared',language:'en'});
+    return {
+      sourcePlugin: {key: plugin, name: plugin}, comicProviderKey: fixture.comicProviderKey,
+      search: async (query: string) => (await fixture.search(query)).map(item => ({...item, sourcePluginKey: plugin, sourcePluginName: plugin})),
+      getDetails: async (key: string) => {
+        if (plugin === 'plugin-b' && holdB) {entered(); await gate;}
+        return {...await fixture.getDetails(key), sourcePluginKey: plugin, sourcePluginName: plugin};
+      },
+      getChapters: (key: string) => fixture.getChapters(key),
+      resolveChapter: async (key: string, chapter: string) => {
+        const result = await fixture.resolveChapter(key, chapter);
+        return {...result, comic: {...result.comic, sourcePluginKey: plugin, sourcePluginName: plugin}};
+      },
+      readPage: (key: string) => fixture.readPage(key),
+    };
+  }
+  const registry = new ReadingProviderRegistry(catalog, async () => ['plugin-a','plugin-b'].map(plugin => ({descriptor:{sourcePluginKey:plugin,sourcePluginName:plugin,comicProviderKey:'provider:v1:Shared:en',name:'Same Provider',language:'en',available:true},runtimeKey:plugin,createAdapter:() => adapter(plugin)})));
+  const service = new ReadingService(registry, store, catalog);
+  try {
+    const comicA = (await service.search('plugin-a','adventure','provider:v1:Shared:en'))[0]!;
+    const comicB = (await service.search('plugin-b','adventure','provider:v1:Shared:en'))[0]!;
+    assert.equal(comicA.comicKey, comicB.comicKey);
+    const sessionA = await service.createSession({sourcePluginKey:'plugin-a',comicKey:comicA.comicKey,chapterKey:FIXTURE_CHAPTER_KEY});
+    const savedA = service.retain({sessionId:sessionA.session.id,pageIndex:0});
+    holdB = true;
+    const pendingB = service.getDetails('plugin-b', comicB.comicKey).then(value => ({ok:true, title:value.title}), (error: Error & {code?: string}) => ({ok:false,code:error.code,message:error.message}));
+    await started;
+    await service.refreshBinding(savedA.sourceBinding.id);
+    release();
+    const result = await pendingB;
+    assert.equal(result.ok, true, 'Refreshing plugin A must preserve plugin B reading requests.');
+  } finally { store.close(); catalog.close(); removeTestDirectory(directory); }
 });

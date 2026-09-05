@@ -152,6 +152,9 @@ export function ReadingExperience() {
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const deleteDialog = useRef<HTMLDialogElement>(null);
   const readingGeneration = useRef(0);
+  const searchRequest = useRef(0);
+  const detailsRequest = useRef(0);
+  const readerRequest = useRef(0);
   const deletedIds = useRef(new Set<string>());
 
   useEffect(() => {
@@ -258,9 +261,28 @@ export function ReadingExperience() {
     return () => controller.abort();
   }, [libraryAttempt]);
 
+  const beginReaderRequest = () => {
+    const request = ++readerRequest.current;
+    setResumeStates((states) => {
+      let changed = false;
+      const next = { ...states };
+      for (const [itemId, state] of Object.entries(states)) {
+        if (state.kind === "pending") {
+          delete next[itemId];
+          changed = true;
+        }
+      }
+      return changed ? next : states;
+    });
+    return request;
+  };
+
   const runSearch = async () => {
     if (!selectedProvider || !selectedProvider.available) return;
     const generation = readingGeneration.current;
+    const request = ++searchRequest.current;
+    detailsRequest.current += 1;
+    beginReaderRequest();
     setSearch({ kind: "loading" });
     setDetails({ kind: "idle" });
     setReader(null);
@@ -274,14 +296,14 @@ export function ReadingExperience() {
         undefined,
         parseCatalogSearchResponse,
       );
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== searchRequest.current) return;
       setSearch(
         response.items.length === 0
           ? { kind: "empty" }
           : { kind: "success", items: response.items },
       );
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== searchRequest.current) return;
       setSearch({
         kind: "failed",
         error:
@@ -294,6 +316,8 @@ export function ReadingExperience() {
 
   const openDetails = async (item: CatalogSearchItem) => {
     const generation = readingGeneration.current;
+    const request = ++detailsRequest.current;
+    beginReaderRequest();
     setDetails({ kind: "loading" });
     try {
       const [comic, chapters] = await Promise.all([
@@ -308,10 +332,10 @@ export function ReadingExperience() {
           parseCatalogChaptersResponse,
         ),
       ]);
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== detailsRequest.current) return;
       setDetails({ kind: "success", comic: comic.comic, chapters: chapters.items });
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== detailsRequest.current) return;
       setDetails({
         kind: "failed",
         error: error instanceof Error ? error.message : "Comic details could not be loaded.",
@@ -331,6 +355,7 @@ export function ReadingExperience() {
   const openChapter = async (chapterKey: string) => {
     if (details.kind !== "success") return;
     const generation = readingGeneration.current;
+    const request = beginReaderRequest();
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
@@ -341,10 +366,10 @@ export function ReadingExperience() {
         }),
         parseReaderSessionResponse,
       );
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       acceptSession(response.session);
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       setDetails({
         kind: "failed",
         error: error instanceof Error ? error.message : "The chapter could not be opened.",
@@ -354,6 +379,7 @@ export function ReadingExperience() {
 
   const resume = async (item: LibraryItem) => {
     const generation = readingGeneration.current;
+    const request = beginReaderRequest();
     setResumeStates((states) => ({ ...states, [item.id]: { kind: "pending" } }));
     try {
       const response = await requestJson(
@@ -361,12 +387,12 @@ export function ReadingExperience() {
         json("POST", { libraryItemId: item.id }),
         parseReaderSessionResponse,
       );
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       acceptSession(response.session);
       setRetainedId(item.id);
       setResumeStates((states) => ({ ...states, [item.id]: { kind: "success" } }));
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       setResumeStates((states) => ({
         ...states,
         [item.id]: {
@@ -423,6 +449,7 @@ export function ReadingExperience() {
     if (!reader) return;
     const libraryItemId = retainedId;
     const generation = readingGeneration.current;
+    const request = beginReaderRequest();
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
@@ -438,11 +465,11 @@ export function ReadingExperience() {
         ),
         parseReaderSessionResponse,
       );
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       acceptSession(response.session);
       if (libraryItemId) setRetainedId(libraryItemId);
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       setSaveMessage(
         error instanceof Error ? error.message : "The reader session could not be renewed.",
       );

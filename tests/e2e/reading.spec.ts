@@ -339,3 +339,220 @@ test("reads, retains, disables provider reading, and restores local state after 
   );
   expect(searchRequests.status()).toBe(200);
 });
+
+test("keeps the latest same-Provider search, details, and chapter selection when older responses arrive last", async ({ page }) => {
+  const installed = await page.request.post(
+    `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+    { data: sourcePluginChange("install") },
+  );
+  expect(installed.status()).toBe(200);
+
+  const olderComic = {
+    comicKey: "comic/older-race",
+    coverRef: "fixture-cover/older-race",
+    sourcePluginKey: "fixture:reader",
+    sourcePluginName: "Comic Free Fixture Reader",
+    title: "Older selection",
+  };
+  const latestComic = {
+    comicKey: "comic/latest-race",
+    coverRef: "fixture-cover/latest-race",
+    sourcePluginKey: "fixture:reader",
+    sourcePluginName: "Comic Free Fixture Reader",
+    title: "Latest selection",
+  };
+
+  let releaseOlderSearch!: () => void;
+  const olderSearchReleased = new Promise<void>((resolve) => {
+    releaseOlderSearch = resolve;
+  });
+  let olderSearchStarted!: () => void;
+  const olderSearchRequested = new Promise<void>((resolve) => {
+    olderSearchStarted = resolve;
+  });
+  let olderSearchHandled!: () => void;
+  const olderSearchCompleted = new Promise<void>((resolve) => {
+    olderSearchHandled = resolve;
+  });
+  await page.route("**/api/v1/catalog/search?*", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q");
+    if (query === "older") {
+      olderSearchStarted();
+      await olderSearchReleased;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [olderComic] }) });
+      olderSearchHandled();
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [olderComic, latestComic] }) });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("Comic Provider", { exact: true }).selectOption("fixture:reader");
+  await page.getByLabel("Search query").fill("older");
+  await page.getByRole("button", { name: "Search catalog" }).click();
+  await olderSearchRequested;
+  await page.getByLabel("Search query").fill("latest");
+  await page.getByLabel("Search query").press("Enter");
+  await expect(page.getByText("Latest selection", { exact: true }).first()).toBeVisible();
+  releaseOlderSearch();
+  await olderSearchCompleted;
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.getByText("Latest selection", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".result-list").getByRole("button", { name: "Open details" })).toHaveCount(2);
+
+  let releaseOlderDetails!: () => void;
+  const olderDetailsReleased = new Promise<void>((resolve) => {
+    releaseOlderDetails = resolve;
+  });
+  let olderDetailsStarted!: () => void;
+  const olderDetailsRequested = new Promise<void>((resolve) => {
+    olderDetailsStarted = resolve;
+  });
+  let olderDetailsResponses = 0;
+  let olderDetailsHandled!: () => void;
+  const olderDetailsCompleted = new Promise<void>((resolve) => {
+    olderDetailsHandled = resolve;
+  });
+  await page.route("**/api/v1/catalog/comics/**", async (route) => {
+    const url = new URL(route.request().url());
+    const older = url.pathname.includes("older-race");
+    const comic = older ? olderComic : latestComic;
+    const body = url.pathname.endsWith("/chapters")
+      ? { items: older
+        ? [{ chapterKey: "chapter/older-race", label: "Older Chapter" }]
+        : [
+          { chapterKey: "chapter/older-race", label: "Older Chapter" },
+          { chapterKey: "chapter/latest-race", label: "Latest Chapter" },
+        ] }
+      : { comic: { ...comic, comicProviderKey: "fixture.provider", description: `${comic.title} description` } };
+    if (older) {
+      olderDetailsStarted();
+      await olderDetailsReleased;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+    if (older && ++olderDetailsResponses === 2) olderDetailsHandled();
+  });
+
+  await page.locator(".result-list").getByRole("button", { name: "Open details" }).first().click();
+  await olderDetailsRequested;
+  await page.locator(".result-list").getByRole("button", { name: "Open details" }).nth(1).click();
+  await expect(page.getByRole("heading", { name: "Latest selection" })).toBeVisible();
+  releaseOlderDetails();
+  await olderDetailsCompleted;
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.getByRole("heading", { name: "Latest selection" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Older selection" })).toHaveCount(0);
+
+  let releaseOlderChapter!: () => void;
+  const olderChapterReleased = new Promise<void>((resolve) => {
+    releaseOlderChapter = resolve;
+  });
+  let olderChapterStarted!: () => void;
+  const olderChapterRequested = new Promise<void>((resolve) => {
+    olderChapterStarted = resolve;
+  });
+  let olderChapterHandled!: () => void;
+  const olderChapterCompleted = new Promise<void>((resolve) => {
+    olderChapterHandled = resolve;
+  });
+  await page.route("**/api/v1/reader-sessions", async (route) => {
+    const request = route.request().postDataJSON() as { chapterKey: string };
+    const older = request.chapterKey === "chapter/older-race";
+    if (older) {
+      olderChapterStarted();
+      await olderChapterReleased;
+    }
+    const title = older ? "Older reader" : "Latest reader";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: {
+          chapterKey: request.chapterKey,
+          chapterLabel: older ? "Older Chapter" : "Latest Chapter",
+          comicKey: older ? olderComic.comicKey : latestComic.comicKey,
+          id: older ? "older-session" : "latest-session",
+          pageCount: 1,
+          pageIndex: 0,
+          pageUrl: `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}/${older ? "older-session" : "latest-session"}/pages/0`,
+          sourcePluginKey: "fixture:reader",
+          sourcePluginName: "Comic Free Fixture Reader",
+          title,
+        },
+      }),
+    });
+    if (older) olderChapterHandled();
+  });
+
+  await page.getByRole("button", { name: "Read Older Chapter" }).click();
+  await olderChapterRequested;
+  await page.getByRole("button", { name: "Read Latest Chapter" }).click();
+  await expect(page.getByRole("region", { name: "Reader" }).getByText("Latest reader", { exact: true })).toBeVisible();
+  releaseOlderChapter();
+  await olderChapterCompleted;
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(page.getByRole("region", { name: "Reader" }).getByText("Latest reader", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Reader" }).getByText("Older reader", { exact: true })).toHaveCount(0);
+});
+
+test("clears a stale Resume pending state when a new search invalidates its reader request", async ({ page }) => {
+  const installed = await page.request.post(
+    `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+    { data: sourcePluginChange("install") },
+  );
+  expect(installed.status()).toBe(200);
+  const sessionResponse = await page.request.post(`${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`, {
+    data: {
+      chapterKey: "chapter/one",
+      comicKey: "comic/deterministic-adventure",
+      sourcePluginKey: "fixture:reader",
+    },
+  });
+  expect(sessionResponse.status()).toBe(201);
+  const session = (await sessionResponse.json()) as { session: { id: string } };
+  const retained = await page.request.post(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`, {
+    data: { pageIndex: 0, sessionId: session.session.id },
+  });
+  expect(retained.status()).toBe(201);
+
+  let releaseResume!: () => void;
+  const resumeReleased = new Promise<void>((resolve) => {
+    releaseResume = resolve;
+  });
+  let resumeStarted!: () => void;
+  const resumeRequested = new Promise<void>((resolve) => {
+    resumeStarted = resolve;
+  });
+  let resumeHandled!: () => void;
+  const resumeCompleted = new Promise<void>((resolve) => {
+    resumeHandled = resolve;
+  });
+  await page.route("**/api/v1/reader-sessions", async (route) => {
+    if (!(route.request().postDataJSON() as { libraryItemId?: string }).libraryItemId) {
+      await route.continue();
+      return;
+    }
+    resumeStarted();
+    await resumeReleased;
+    await route.continue();
+    resumeHandled();
+  });
+
+  await page.goto("/");
+  const library = page.getByRole("region", { name: "Your Library" });
+  const resume = library.getByRole("button", { name: "Resume reading" });
+  await expect(resume).toBeVisible();
+  await resume.click();
+  await resumeRequested;
+  await expect(library.getByRole("button", { name: "Resuming reading…" })).toBeDisabled();
+
+  await page.getByLabel("Comic Provider", { exact: true }).selectOption("fixture:reader");
+  await page.getByLabel("Search query").fill("adventure");
+  await page.getByLabel("Search query").press("Enter");
+  await expect(page.getByText("Deterministic Adventure", { exact: true }).first()).toBeVisible();
+  await expect(library.getByRole("button", { name: "Resume reading" })).toBeEnabled();
+
+  releaseResume();
+  await resumeCompleted;
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await expect(library.getByRole("button", { name: "Resume reading" })).toBeEnabled();
+});
