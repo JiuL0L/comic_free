@@ -1,8 +1,9 @@
 # Comic Free
 
 Comic Free is a local, personal comic reader. The formal application provides a
-loopback-only Browser WebUI and Local Core with deterministic reading, retained local
-state, managed Suwayomi lifecycle, and an optional Suwayomi reading adapter.
+loopback-only Browser WebUI and Local Core, retained Source Plugin catalog and reading
+state, safe Suwayomi lifecycle management, explicitly approved Source Plugin changes,
+and an optional Suwayomi reading adapter.
 
 ## Start the application
 
@@ -75,7 +76,42 @@ pnpm verify:suwayomi-reading
 This reports the observed Source Plugin, comic, chapter, page count, image content type,
 byte count, and SHA-256 without printing upstream page URLs or GraphQL payloads.
 
-## Verify
+## Manage an approved Source Plugin
+
+The Source Plugins screen can install, update, disable, or restore a trusted Mihon
+extension through the Local Core. Each request identifies the extension store URL,
+package name, and (except for disable) exact approved version. The action remains
+disabled until the user checks the source-specific approval box. The Browser WebUI never
+calls Suwayomi directly.
+
+Successful changes update the retained catalog immediately and expose normalized Comic
+Provider names after reload without rebuilding the WebUI. Disable is a Comic Free-local
+state change: the approved package remains installed in Suwayomi and no uninstall mutation
+is sent. Disabling makes matching Source Bindings unavailable; updating or restoring marks
+them `refresh_required`. Library Items, Last Known Snapshots, and Reading Progress remain
+unchanged. Catalog refresh failure remains a separate retained observation. This screen
+owns management and discovery; the configured reading adapter handles provider reading.
+
+After approving one exact extension operation, the opt-in restart check requires all of
+the following values and refuses to run when any value or the approval flag is absent:
+
+```powershell
+$env:COMIC_FREE_SOURCE_PLUGIN_CHANGE_APPROVED = 'true'
+$env:COMIC_FREE_SUWAYOMI_JAR = 'C:\path\to\Suwayomi-Server.jar'
+$env:COMIC_FREE_SUWAYOMI_APPROVED_SHA256 = '<64-character approved digest>'
+$env:COMIC_FREE_SOURCE_PLUGIN_STORE_URL = 'https://trusted.example/repo/index.pb'
+$env:COMIC_FREE_SOURCE_PLUGIN_PACKAGE = 'approved.package.name'
+$env:COMIC_FREE_SOURCE_PLUGIN_VERSION = 'approved.version'
+# Optional when the JVM cannot reach the approved store directly:
+$env:COMIC_FREE_SUWAYOMI_PROXY = 'http://127.0.0.1:7897'
+pnpm verify:source-plugin-changes
+```
+
+The check installs only that approved version into an isolated data directory, performs
+an application-level safe shutdown, starts the same Plugin Host state again, and verifies
+that the installed Source Plugin survived the restart.
+
+## Verify the deterministic application
 
 ```powershell
 pnpm verify

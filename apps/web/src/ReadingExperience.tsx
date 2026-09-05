@@ -470,10 +470,12 @@ export function ReadingExperience() {
                   <h3>{item.snapshot.title}</h3>
                   <p>{item.progress.chapterLabel}</p>
                   <p>Page {item.progress.pageIndex + 1} of {item.progress.pageCount}</p>
-                  <span className={item.sourceBinding.availability === "available" ? "availability available" : "availability unavailable"}>
+                  <span className={`availability ${item.sourceBinding.availability}`}>
                     {item.sourceBinding.availability === "available"
                       ? "Available"
-                      : reasonLabels[item.sourceBinding.reasonCode ?? "unknown"]}
+                      : item.sourceBinding.availability === "refresh_required"
+                        ? "Source Binding refresh required"
+                        : reasonLabels[item.sourceBinding.reasonCode ?? "unknown"]}
                   </span>
                 </div>
                 <button type="button" disabled={item.sourceBinding.availability !== "available"} onClick={() => void resume(item)}>Resume reading</button>

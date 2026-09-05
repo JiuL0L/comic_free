@@ -208,3 +208,53 @@ test("retains every Source Plugin state through failure, restart, removal, and r
   await expect(page.getByText("Healthy", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Source Bindings require explicit refresh.")).toBeVisible();
 });
+
+test("shows pending, successful, failed, and restart-required plugin changes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Manage a trusted change" })).toBeVisible();
+  await page.getByLabel("Extension store URL").fill(
+    "https://fixtures.comic-free.invalid/repo/index.pb",
+  );
+  await page.getByLabel("Package name").fill("fixture:reader");
+  await page.getByLabel("Approved version").fill("1.0.0");
+  await page.getByLabel(/I approve install/i).check();
+  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await expect(page.getByText("Applying approved change…")).toBeVisible();
+  await expect(page.getByText("Comic Free Fixture Reader was installed.")).toBeVisible();
+  await expect(page.getByText("Fixture Provider", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Fixture Provider", { exact: true })).toBeVisible();
+  await page.getByLabel("Extension store URL").fill(
+    "https://fixtures.comic-free.invalid/repo/index.pb",
+  );
+  await page.getByLabel("Package name").fill("fixture:reader");
+
+  await page.getByLabel("Change action").selectOption("update");
+  await page.getByLabel("Approved version").fill("1.1.0");
+  await page.getByLabel(/I approve update/i).check();
+  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await expect(page.getByText(/Restart required/i)).toBeVisible();
+
+  await page.getByLabel("Change action").selectOption("disable");
+  await page.getByLabel(/I approve disable/i).check();
+  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await expect(page.getByText("Comic Free Fixture Reader was disabled.")).toBeVisible();
+  await expect(page.getByText("Disabled", { exact: true }).last()).toBeVisible();
+
+  await page.getByLabel("Change action").selectOption("restore");
+  await page.getByLabel("Approved version").fill("1.1.0");
+  await page.getByLabel(/I approve restore/i).check();
+  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await expect(page.getByText("Comic Free Fixture Reader was restored.")).toBeVisible();
+
+  await page.getByLabel("Package name").fill("missing.secret=must-not-leak");
+  await page.getByLabel(/I approve restore/i).check();
+  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "The approved Source Plugin was not found",
+  );
+  await expect(page.getByRole("alert")).not.toContainText("must-not-leak");
+});
