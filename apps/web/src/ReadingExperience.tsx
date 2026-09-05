@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   LIBRARY_ITEMS_PATH,
   LOCAL_CORE_ORIGIN,
-  READING_SOURCE_PLUGIN_PATH,
+  FIXTURE_SOURCE_PLUGIN,
+  READING_PROVIDERS_PATH,
   READER_SESSIONS_PATH,
   catalogSearchUrl,
   comicChaptersUrl,
@@ -16,7 +17,7 @@ import {
   parseDeleteLibraryItemResponse,
   parseLibraryItemsResponse,
   parseReaderSessionResponse,
-  parseReadingSourcePluginResponse,
+  parseReadingProvidersResponse,
   readerPageUrl,
   sourceBindingRefreshUrl,
   type CatalogChaptersResponse,
@@ -24,7 +25,7 @@ import {
   type ComicDetailsResponse,
   type LibraryItem,
   type ReaderSessionResponse,
-  type ReadingSourcePluginResponse,
+  type ReadingProvider,
 } from "@comic-free/contracts";
 
 import "./reading.css";
@@ -92,6 +93,12 @@ type ActionState =
   | { kind: "success" }
   | { error: string; kind: "failed" };
 
+type ReadingProvidersState = {
+  items: ReadingProvider[];
+  kind: "loading" | "empty" | "success" | "error";
+  message: string | null;
+};
+
 const reasonLabels: Record<string, string> = {
   comic_provider_unreachable: "Comic Provider unreachable",
   disabled: "Source Plugin disabled",
@@ -103,12 +110,24 @@ const reasonLabels: Record<string, string> = {
   unknown: "Source Binding unavailable",
 };
 
+function providerOptionValue(provider: ReadingProvider): string {
+  return provider.sourcePluginKey === FIXTURE_SOURCE_PLUGIN.key && provider.comicProviderKey === "fixture.provider"
+    ? FIXTURE_SOURCE_PLUGIN.key
+    : JSON.stringify([provider.sourcePluginKey, provider.comicProviderKey]);
+}
+
+function providerLabel(provider: ReadingProvider): string {
+  return `${provider.sourcePluginName} / ${provider.name} (${provider.language})`;
+}
+
 export function ReadingExperience() {
-  const [sourcePlugins, setSourcePlugins] = useState<
-    ReadingSourcePluginResponse["sourcePlugin"][]
-  >([]);
-  const [sourcePluginError, setSourcePluginError] = useState<string | null>(null);
-  const [sourcePluginKey, setSourcePluginKey] = useState("");
+  const [providers, setProviders] = useState<ReadingProvidersState>({
+    items: [],
+    kind: "loading",
+    message: null,
+  });
+  const [providerRefreshAttempt, setProviderRefreshAttempt] = useState(0);
+  const [providerSelection, setProviderSelection] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
   const [details, setDetails] = useState<DetailsState>({ kind: "idle" });
@@ -170,25 +189,50 @@ export function ReadingExperience() {
     }
   };
 
+  const selectedProvider = providers.items.find(
+    (provider) => providerOptionValue(provider) === providerSelection,
+  );
+
   useEffect(() => {
     const controller = new AbortController();
     void requestJson(
-      `${LOCAL_CORE_ORIGIN}${READING_SOURCE_PLUGIN_PATH}`,
+      `${LOCAL_CORE_ORIGIN}${READING_PROVIDERS_PATH}`,
       { signal: controller.signal },
-      parseReadingSourcePluginResponse,
+      parseReadingProvidersResponse,
     ).then(
-      (response) => setSourcePlugins([response.sourcePlugin]),
+      (response) => {
+        if (controller.signal.aborted) return;
+        setProviders((current) => ({
+          items:
+            response.state === "error" && response.items.length === 0
+              ? current.items
+              : response.items,
+          kind: response.state,
+          message: response.message,
+        }));
+      },
       (error: unknown) => {
         if (!controller.signal.aborted) {
-          setSourcePluginError(
-            error instanceof Error
-              ? error.message
-              : "The reading Source Plugin could not be loaded.",
-          );
+          setProviders((current) => ({
+            ...current,
+            kind: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Installed Comic Providers could not be loaded.",
+          }));
         }
       },
     );
     return () => controller.abort();
+  }, [providerRefreshAttempt]);
+
+  useEffect(() => {
+    const interval = window.setInterval(
+      () => setProviderRefreshAttempt((attempt) => attempt + 1),
+      10_000,
+    );
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -215,22 +259,29 @@ export function ReadingExperience() {
   }, [libraryAttempt]);
 
   const runSearch = async () => {
-    if (!sourcePluginKey) return;
+    if (!selectedProvider || !selectedProvider.available) return;
+    const generation = readingGeneration.current;
     setSearch({ kind: "loading" });
     setDetails({ kind: "idle" });
     setReader(null);
     try {
       const response = await requestJson(
-        catalogSearchUrl(sourcePluginKey, query),
+        catalogSearchUrl(
+          selectedProvider.sourcePluginKey,
+          query,
+          selectedProvider.comicProviderKey,
+        ),
         undefined,
         parseCatalogSearchResponse,
       );
+      if (generation !== readingGeneration.current) return;
       setSearch(
         response.items.length === 0
           ? { kind: "empty" }
           : { kind: "success", items: response.items },
       );
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setSearch({
         kind: "failed",
         error:
@@ -242,6 +293,7 @@ export function ReadingExperience() {
   };
 
   const openDetails = async (item: CatalogSearchItem) => {
+    const generation = readingGeneration.current;
     setDetails({ kind: "loading" });
     try {
       const [comic, chapters] = await Promise.all([
@@ -256,8 +308,10 @@ export function ReadingExperience() {
           parseCatalogChaptersResponse,
         ),
       ]);
+      if (generation !== readingGeneration.current) return;
       setDetails({ kind: "success", comic: comic.comic, chapters: chapters.items });
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setDetails({
         kind: "failed",
         error: error instanceof Error ? error.message : "Comic details could not be loaded.",
@@ -450,24 +504,31 @@ export function ReadingExperience() {
   return (
     <>
       <section className="reading-panel" aria-labelledby="find-comic-heading">
-        <p className="eyebrow">READ / DETERMINISTIC CATALOG</p>
+        <p className="eyebrow">READ / COMIC CATALOG</p>
         <h2 id="find-comic-heading">Find a comic</h2>
         <div className="search-controls">
           <label>
-            Source Plugin
+            Comic Provider
             <select
-              aria-label="Source Plugin"
-              value={sourcePluginKey}
+              aria-label="Comic Provider"
+              value={providerSelection}
               onChange={(event) => {
-                setSourcePluginKey(event.target.value);
+                readingGeneration.current += 1;
+                setProviderSelection(event.target.value);
                 setSearch({ kind: "idle" });
                 setDetails({ kind: "idle" });
                 setReader(null);
               }}
             >
-              <option value="">Choose a Source Plugin</option>
-              {sourcePlugins.map((plugin) => (
-                <option key={plugin.key} value={plugin.key}>{plugin.name}</option>
+              <option value="">Choose a Comic Provider</option>
+              {providers.items.map((provider) => (
+                <option
+                  key={JSON.stringify([provider.sourcePluginKey, provider.comicProviderKey])}
+                  disabled={!provider.available}
+                  value={providerOptionValue(provider)}
+                >
+                  {providerLabel(provider)}{provider.available ? "" : " — unavailable"}
+                </option>
               ))}
             </select>
           </label>
@@ -481,16 +542,27 @@ export function ReadingExperience() {
               }}
             />
           </label>
-          <button type="button" disabled={!sourcePluginKey || !query.trim() || search.kind === "loading"} onClick={() => void runSearch()}>
+          <button type="button" disabled={!selectedProvider?.available || !query.trim() || search.kind === "loading"} onClick={() => void runSearch()}>
             Search catalog
           </button>
         </div>
 
-        {sourcePluginError && (
-          <p className="reading-notice error" role="alert">{sourcePluginError}</p>
+        {providers.kind === "loading" && providers.items.length === 0 && (
+          <p className="reading-notice">Loading installed Comic Providers…</p>
+        )}
+        {providers.kind === "empty" && (
+          <p className="reading-notice">No installed Comic Providers are available.</p>
+        )}
+        {providers.kind === "error" && (
+          <div className="reading-notice error" role="alert">
+            <span>{providers.message ?? "Installed Comic Providers could not be loaded."}</span>
+            <button type="button" onClick={() => setProviderRefreshAttempt((attempt) => attempt + 1)}>
+              Retry Comic Providers
+            </button>
+          </div>
         )}
 
-        {search.kind === "loading" && <p className="reading-notice">Searching {sourcePlugins.find((plugin) => plugin.key === sourcePluginKey)?.name ?? "Source Plugin"}…</p>}
+        {search.kind === "loading" && <p className="reading-notice">Searching {selectedProvider ? providerLabel(selectedProvider) : "Comic Provider"}…</p>}
         {search.kind === "empty" && <p className="reading-notice">No comics matched this search.</p>}
         {search.kind === "failed" && (
           <div className="reading-notice error" role="alert">

@@ -4,6 +4,9 @@ import {
   CATALOG_SEARCH_PATH,
   LIBRARY_ITEMS_PATH,
   READING_SOURCE_PLUGIN_PATH,
+  READING_PROVIDERS_PATH,
+  parseReadingProvidersResponse,
+  parseReadingProviderSelection,
   READER_SESSIONS_PATH,
   SOURCE_BINDING_REASON_CODES,
   parseCreateReaderSessionRequest,
@@ -154,19 +157,19 @@ export function createReadingHttpHandler(service: ReadingService) {
     const refreshMatch = pathname.match(/^\/api\/v1\/source-bindings\/([^/]+)\/refresh$/);
     const known =
       pathname === CATALOG_SEARCH_PATH ||
-      pathname === READING_SOURCE_PLUGIN_PATH ||
+      (pathname === READING_SOURCE_PLUGIN_PATH || pathname === READING_PROVIDERS_PATH) ||
       pathname === READER_SESSIONS_PATH ||
       pathname === LIBRARY_ITEMS_PATH ||
       Boolean(detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || refreshMatch || deleteMatch);
     if (!known) return false;
 
     try {
-      if (pathname === READING_SOURCE_PLUGIN_PATH) {
+      if ((pathname === READING_SOURCE_PLUGIN_PATH || pathname === READING_PROVIDERS_PATH)) {
         if (request.method !== "GET") {
           methodNotAllowed(response, "GET");
           return true;
         }
-        writeJson(response, 200, service.getSourcePlugin());
+        writeJson(response, 200, pathname === READING_PROVIDERS_PATH ? parseReadingProvidersResponse(await service.getProviders()) : service.getSourcePlugin());
         return true;
       }
 
@@ -179,8 +182,12 @@ export function createReadingHttpHandler(service: ReadingService) {
           requestUrl.searchParams.get("sourcePluginKey"),
           "sourcePluginKey",
         );
+        for (const key of requestUrl.searchParams.keys()) {
+          if (!["sourcePluginKey", "comicProviderKey", "q"].includes(key) || requestUrl.searchParams.getAll(key).length !== 1) throw new TypeError("Invalid catalog search query parameters.");
+        }
+        const selection = parseReadingProviderSelection({sourcePluginKey, ...(requestUrl.searchParams.has("comicProviderKey") ? {comicProviderKey: requestUrl.searchParams.get("comicProviderKey")} : {})});
         const query = requireQuery(requestUrl.searchParams.get("q"), "q");
-        writeJson(response, 200, { items: await service.search(sourcePluginKey, query) });
+        writeJson(response, 200, { items: await service.search(selection.sourcePluginKey, query, selection.comicProviderKey) });
         return true;
       }
 

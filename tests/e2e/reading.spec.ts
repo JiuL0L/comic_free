@@ -120,11 +120,13 @@ test("reads, retains, disables provider reading, and restores local state after 
   });
   const searchButton = page.getByRole("button", { name: "Search catalog" });
   await expect(searchButton).toBeDisabled();
-  await page.getByLabel("Source Plugin", { exact: true }).selectOption("fixture:reader");
+  await page.getByLabel("Comic Provider", { exact: true }).selectOption("fixture:reader");
   await page.getByLabel("Search query").fill("no matches");
   await expect(searchButton).toBeEnabled();
   await searchButton.click();
-  await expect(page.getByText("Searching Comic Free Fixture Reader…")).toBeVisible();
+  await expect(
+    page.getByText("Searching Comic Free Fixture Reader / Fixture Provider (en)…"),
+  ).toBeVisible();
   releaseSearch();
   await expect(page.getByText("No comics matched this search.")).toBeVisible();
   await page.unroute("**/api/v1/catalog/search?*");
@@ -333,7 +335,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   expect(staleSession.status()).toBe(404);
 
   const searchRequests = await page.request.get(
-    `${LOCAL_CORE_ORIGIN}${CATALOG_SEARCH_PATH}?sourcePluginKey=fixture%3Areader&q=adventure`,
+    `${LOCAL_CORE_ORIGIN}${CATALOG_SEARCH_PATH}?sourcePluginKey=fixture%3Areader&comicProviderKey=fixture.provider&q=adventure`,
   );
   expect(searchRequests.status()).toBe(200);
 });

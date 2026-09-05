@@ -108,15 +108,21 @@ async function readLimitedText(response: Response): Promise<string> {
   return Buffer.concat(chunks, byteLength).toString("utf8");
 }
 
+export function stableProviderKey(name: string, language: string): string {
+  return `provider:v1:${encodeURIComponent(name)}:${encodeURIComponent(language)}`;
+}
+
 function parseComicProviders(
   extension: ExtensionNode,
 ): SourcePluginChangeAdapterResult["providers"] {
   const source = extension.source && requireRecord(extension.source, "Comic Provider list");
   const nodes = source && Array.isArray(source.nodes) ? source.nodes : [];
-  return nodes.map((candidate, index) => {
+  const providers = nodes.map((candidate, index) => {
     const provider = requireRecord(candidate, `Comic Provider ${index}`);
     if (
       (typeof provider.id !== "string" && typeof provider.id !== "number") ||
+      (typeof provider.id === "number" && !Number.isSafeInteger(provider.id)) ||
+      !/^-?\d+$/.test(String(provider.id)) ||
       typeof provider.name !== "string" ||
       provider.name.trim() === "" ||
       typeof provider.lang !== "string" ||
@@ -129,11 +135,15 @@ function parseComicProviders(
       );
     }
     return {
-      key: String(provider.id),
+      key: stableProviderKey(provider.name, provider.lang),
       language: provider.lang,
       name: provider.name,
     };
   });
+  if (new Set(providers.map(provider => provider.key)).size !== providers.length) {
+    throw new SourcePluginChangeAdapterError("plugin_host_invalid_response", "Comic Provider names and languages must be unique within a Source Plugin.", true);
+  }
+  return providers;
 }
 
 function requireComicProviders(
@@ -284,6 +294,20 @@ export class SuwayomiSourcePluginChangeAdapter implements SourcePluginChangeAdap
       );
     }
     return target;
+  }
+
+  async discoverInstalled(signal: AbortSignal) {
+    const data = await this.#graphql(`query ComicFreeInstalledProviders {
+      extensions(condition: {isInstalled: true}) { nodes { name pkgName versionName isInstalled isObsolete hasUpdate storeIndexUrl source { nodes { id name lang } totalCount } } totalCount }
+    }`, {}, signal);
+    const connection = requireRecord(data.extensions, "installed extensions");
+    if (!Array.isArray(connection.nodes) || connection.totalCount !== connection.nodes.length) throw new SourcePluginChangeAdapterError("plugin_host_invalid_response", "The installed extension observation is incomplete.", true);
+    return connection.nodes.map(requireExtension).filter(extension => extension.isInstalled).map(extension => {
+      const source = requireRecord(extension.source, "installed Comic Providers");
+      if (!Array.isArray(source.nodes) || source.totalCount !== source.nodes.length) throw new SourcePluginChangeAdapterError("plugin_host_invalid_response", "The Comic Provider observation is incomplete.", true);
+      const providers = parseComicProviders(extension);
+      return {name: extension.name, pluginKey: extension.pkgName, version: extension.versionName, storeUrl: extension.storeIndexUrl, providers: providers.map((provider, index) => ({...provider, sourceId: String((source.nodes as Array<{id: string | number}>)[index]!.id)}))};
+    });
   }
 
   async inspect(
