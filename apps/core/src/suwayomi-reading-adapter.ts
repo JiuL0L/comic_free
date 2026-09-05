@@ -52,7 +52,7 @@ interface DurableChapterReference {
 }
 
 interface SuwayomiManga {
-  id: string;
+  id: number;
   title: string;
   url: string;
 }
@@ -62,7 +62,7 @@ interface SuwayomiMangaDetails extends SuwayomiManga {
 }
 
 interface SuwayomiChapter {
-  id: string;
+  id: number;
   label: string;
   url: string;
 }
@@ -360,7 +360,7 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
     return match;
   }
 
-  async #fetchChapters(runtimeMangaId: string): Promise<SuwayomiChapter[]> {
+  async #fetchChapters(runtimeMangaId: number): Promise<SuwayomiChapter[]> {
     return parseChaptersResponse(
       await this.#graphql.request(CHAPTERS_OPERATION, {
         input: { mangaId: runtimeMangaId },
@@ -497,11 +497,11 @@ function object(value: unknown, _context: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function runtimeId(value: unknown): string {
-  if ((typeof value !== "string" && typeof value !== "number") || String(value) === "") {
+function runtimeId(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 2_147_483_647) {
     throw new SuwayomiResponseError("invalid");
   }
-  return String(value);
+  return value;
 }
 
 function providerUrl(value: unknown): string {

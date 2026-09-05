@@ -26,7 +26,12 @@ function loadGeneration(name: string): RecordedGeneration {
 class RecordedTransport implements SuwayomiGraphqlTransport {
   constructor(private readonly generation: RecordedGeneration) {}
 
-  async request(operation: string): Promise<unknown> {
+  async request(operation: string, variables: Record<string, unknown>): Promise<unknown> {
+    const input = variables.input as Record<string, unknown>;
+    const idField = operation.includes("ComicFreeDetails") ? "id"
+      : operation.includes("ComicFreeChapters") ? "mangaId"
+      : operation.includes("ComicFreePages") ? "chapterId" : null;
+    if (idField) assert.equal(typeof input[idField], "number", `${idField} must be a GraphQL Int`);
     if (operation.includes("ComicFreeSearch")) return this.generation.search;
     if (operation.includes("ComicFreeDetails")) return this.generation.details;
     if (operation.includes("ComicFreeChapters")) return this.generation.chapters;
@@ -200,4 +205,16 @@ test("Suwayomi page reads apply a bounded timeout", async () => {
     (error: unknown) =>
       error instanceof ReadingAdapterError && error.code === "page_timeout",
   );
+});
+
+
+test("rejects invalid Suwayomi runtime IDs before issuing dependent requests", async () => {
+  for (const id of ["101", "", 0, -1, 1.5, 2_147_483_648, null]) {
+    const generation = loadGeneration("reading-generation-1");
+    generation.search = { data: { fetchSourceManga: { mangas: [{
+      id, title: "Invalid ID", url: "/title/invalid-id",
+    }] } } };
+    await assert.rejects(adapter(generation).search("Invalid ID"),
+      (error: unknown) => error instanceof ReadingAdapterError && error.code === "unknown");
+  }
 });

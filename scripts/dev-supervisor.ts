@@ -25,6 +25,7 @@ interface ChildCommand {
   args: string[];
   command: string;
   name: string;
+  gracefulShutdown?: boolean;
 }
 
 export interface DevelopmentController {
@@ -137,19 +138,47 @@ function startChild(root: string, spec: ChildCommand): ChildProcess {
   const child = spawn(spec.command, spec.args, {
     cwd: root,
     env: process.env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: spec.gracefulShutdown ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
   prefixOutput(child, spec.name);
   return child;
 }
 
-async function stopChild(child: ChildProcess): Promise<void> {
+async function stopChild(child: ChildProcess, graceful = false): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
 
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  child.kill();
-  await exited;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      error ? reject(error) : resolve();
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      finish(graceful && code !== 0
+        ? new Error(`Local Core shutdown failed (${describeExit(code, signal)}).`)
+        : undefined);
+    };
+    const timeoutError = new Error(graceful
+      ? "Local Core shutdown timed out; its Plugin Host may still be running."
+      : "Browser WebUI shutdown timed out.");
+    let timer = setTimeout(() => {
+      if (graceful && child.connected) {
+        child.disconnect();
+        timer = setTimeout(() => finish(timeoutError), 5_000);
+      } else {
+        finish(timeoutError);
+      }
+    }, 40_000);
+    child.once("exit", onExit);
+    if (graceful) {
+      child.send("shutdown", (error) => {
+        if (error && child.connected) child.disconnect();
+      });
+    } else {
+      child.kill();
+    }
+  });
 }
 
 export async function startDevelopment(
@@ -160,6 +189,7 @@ export async function startDevelopment(
 
   const core = startChild(root, {
     name: "Local Core",
+    gracefulShutdown: true,
     command: process.execPath,
     args: ["--import", "tsx", "apps/core/src/main.ts"],
   });
@@ -195,7 +225,9 @@ export async function startDevelopment(
     });
   } catch (error) {
     stopping = true;
-    await Promise.allSettled([stopChild(core), ...(web ? [stopChild(web)] : [])]);
+    const cleanup = await Promise.allSettled([stopChild(core, true), ...(web ? [stopChild(web)] : [])]);
+    const failures = cleanup.filter(result => result.status === "rejected").map(result => result.reason);
+    if (failures.length) throw new AggregateError([error, ...failures], "Startup failed and cleanup was incomplete.");
     throw error;
   }
 
@@ -218,12 +250,17 @@ export async function startDevelopment(
   core.once("exit", reportUnexpectedExit("Local Core"));
   web.once("exit", reportUnexpectedExit("Browser WebUI"));
 
+  let stopPromise: Promise<void> | undefined;
   return {
     unexpectedExit,
-    stop: async () => {
-      if (stopping) return;
+    stop: () => {
       stopping = true;
-      await Promise.allSettled([stopChild(web), stopChild(core)]);
+      stopPromise ??= (async () => {
+        const results = await Promise.allSettled([stopChild(web), stopChild(core, true)]);
+        const failures = results.filter(result => result.status === "rejected").map(result => result.reason);
+        if (failures.length) throw new AggregateError(failures, "Application shutdown failed; inspect the Local Core/Plugin Host state.");
+      })();
+      return stopPromise;
     },
   };
 }

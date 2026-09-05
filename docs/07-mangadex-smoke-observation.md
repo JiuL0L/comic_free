@@ -1,87 +1,124 @@
-# Ticket 07 — optional MangaDex smoke observation
+# Ticket 07 — MangaDex smoke observation
 
-Observed: 2026-09-05T10:46:16Z. Formal application baseline: `f1282c0`.
+Observed: 2026-09-05T11:15:48Z; resume verified at 11:20:01Z.
+Base: `f1282c0`; the formal shutdown and GraphQL Int fixes in this change were
+applied before the successful run.
 
 ## Verdict
 
-**Incomplete: extension registration prerequisite failed.** The managed Suwayomi
-host reached readiness, but the isolated host reported zero registered extensions
-and only `Local source`. The formal Browser WebUI displayed `Suwayomi is ready.`
-and `No Source Plugins have been observed yet.` No MangaDex source was available
-for the formal reading adapter. Live search, chapter resolution and page rendering
-were not reached. This is not evidence of a MangaDex network/provider failure.
+**PASS for this optional live observation.** The formal Browser WebUI displayed
+MangaDex, the selected comic, chapter, page count and a decoded real image served
+through the Local Core page proxy. A retained Library Item resumed on page 2 after
+restarting both Local Core and Suwayomi. Deterministic acceptance passed separately.
+This does not promise that the selected public content will remain available.
 
-This optional observation does not change deterministic MVP acceptance. Ticket 07
-remains incomplete; it must not be presented as successful live reading.
-
-## Authorized artifacts and isolation
-
-The user explicitly approved executing the two existing artifacts in an isolated
-data directory and contacting MangaDex; no extension download or update was approved
-or performed by this task.
-
-| Artifact | SHA-256 |
+| Observed field | Value |
 | --- | --- |
-| Suwayomi `v2.3.2243`, `.local-data/suwayomi/v2.3.2243/Suwayomi-Server-v2.3.2243.jar` in the primary checkout | `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5` |
-| MangaDex `v1.4.212`, `.local-data/suwayomi/extension-runtime/extensions/tachiyomi-all.mangadex-v1.4.212.jar` in the primary checkout | `1ABAEB20D644E60CD2F426AAE5432A085909B9D971C49D9F102F9D5657324A50` |
+| Source Plugin | MangaDex, `eu.kanade.tachiyomi.extension.all.mangadex`, version `1.4.212` |
+| Configured provider | MangaDex English, source `2499283573021220255` |
+| Comic | Yotsuba&! |
+| Chapter | Vol.1 Ch.1 - Yotsuba & Moving |
+| First observed page | 1 of 48 |
+| Local Core image response | HTTP 200, `image/jpg`, 151105 bytes |
+| Image SHA-256 | `7356968fea0ddf74b0e41835f5dc3fcf0915b8c20cacf4e19bb26a69dd3fa7d2` |
+| Browser decoded dimensions | 600 × 872; visible manga panels confirmed by screenshot inspection |
+| Retained/resumed progress | Page 2 of 48, same comic and chapter, newly created reader session |
+
+## Artifacts, authorization and setup
+
+The user approved executing the exact existing files in isolated data, then explicitly
+asked to continue the proposed diagnosis, minimal fixes and regression checks. No new
+Suwayomi or extension code was downloaded or updated. Temporary setup/probe scripts
+and screenshots remain outside the committed change. The formal fixes are the separately
+authorized repair work; no push or merge has been performed.
+
+| Existing artifact in `E:/Code/comic_free` | Approved SHA-256 |
+| --- | --- |
+| `.local-data/suwayomi/v2.3.2243/Suwayomi-Server-v2.3.2243.jar` | `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5` |
+| `.local-data/suwayomi/extension-runtime/extensions/tachiyomi-all.mangadex-v1.4.212.jar` | `1ABAEB20D644E60CD2F426AAE5432A085909B9D971C49D9F102F9D5657324A50` |
 
 Worktree: `E:/Code/comic_free/.Codex/worktrees/07-mangadex-smoke`.
-Task data root: `.local-data/07-live/` within that worktree. Only the MangaDex JAR
-was copied into the new runtime extension directory. The historical H2 database,
-other extensions and user library were not copied or modified. Observation shows
-that this JAR-only staging did not register the extension; the precise registration
-mechanism was not established by this run.
+Isolated data: `.local-data/07-live/` inside that worktree. Historical H2 data and the
+primary checkout's library were not copied or modified.
 
-## Evidence boundary
+Copying the JAR into an empty extensions directory did not register it. Inspection of
+the approved Suwayomi artifact identified its supported `installExternalExtension`
+GraphQL mutation. Its multipart parser accepts a top-level `Upload` variable:
+`mutation($file: Upload!) { installExternalExtension(input:{extensionFile:$file}) { __typename } }`,
+with the file map targeting `variables.file`. The existing JAR was uploaded locally
+as `approved-mangadex.jar`; the installed file retained the approved SHA-256.
+Registration returned `isInstalled: true` and 61 MangaDex language sources (62 including
+Local source), and persisted across restarts. This was provisioning through Suwayomi's
+local API; all user reading actions used the formal Comic Free WebUI and REST facade.
 
-- Used the formal development supervisor, Local Core, managed Suwayomi lifecycle,
-  and React Browser WebUI. Browser inspection used browser-harness on localhost.
-- Host REST status: `ready`, internal port `4568`. Local diagnostic GraphQL calls
-  returned HTTP 200 with `extensions.nodes = []` and only source `0 / Local source`.
-  These calls diagnosed setup; they did not substitute for the formal reading path.
-- Source Plugin/title/chapter/page number/count/image content type/byte count and
-  rendered page: **not observed**. The fixture reader shown by the UI is not live
-  MangaDex evidence. No permanent assertion about public content is made.
-- Read-only SQLite inspection found zero rows in `library_items`,
-  `last_known_snapshots`, `source_bindings`, and `reading_progress`. No transient
-  manga/chapter IDs or upstream page URLs were persisted by this attempt. This is
-  empty-state evidence only, not successful live identity or restart validation.
-- Supervisor returned exit code 0 and `SMOKE_STOPPED`, but only ports 3210 and
-  5173 were released. Port 4568 remained owned by Java PID 31856, verified against
-  this task data root. `stopChild` in `scripts/dev-supervisor.ts` uses `child.kill()`;
-  the Local Core shutdown handler was not successfully exercised on this Windows run.
-  No H2 lock file was observed, which does not prove database-safe shutdown.
-  The initial Java Attach cleanup proposal was rejected before execution. After the
-  user explicitly approved that exact method, PID 31856 and its task-root ownership
-  were revalidated, and a temporary local agent invoked `System.exit(0)` (Attach exit
-  0). At 2026-09-05T10:51:46Z the JVM no longer existed, all three ports could be
-  rebound, and no H2 lock file remained. This completed cleanup but does not repair
-  the formal supervisor shutdown path or prove database reopen. No second live
-  reading restart was attempted.
+The reading source was configured with the observed English source id, package key,
+display name `MangaDex`, and provider key `mangadex:en`. The Source Plugins management
+catalog does not automatically import an externally provisioned extension; this run
+proves its exposure in the configured reading selector, not a new local-file import UI.
 
-## Deterministic acceptance and retained logs
+## Failures diagnosed and repaired
 
-`pnpm install --offline --frozen-lockfile`: exit 0, 31 cached packages, zero downloads.
-`pnpm verify`: exit 0; type checking and build passed, 67 unit/integration tests and
-4 Chrome acceptance journeys passed. No product code changed after that verification.
+1. JAR-only staging produced an empty extension registry. This was a setup failure,
+   not a MangaDex network failure. Supported local registration resolved it.
+2. The Windows development supervisor terminated Local Core directly, bypassing its
+   application-level Plugin Host shutdown. Initial cleanup required an explicitly
+   approved temporary Java Attach agent, recorded in commits `52d5f10` and `1332cd9`.
+   The formal supervisor now sends IPC shutdown, waits for completion, reports failed
+   or timed-out shutdown, and shares the pending result across repeated requests.
+   Local Core also shuts down on parent IPC disconnect. Subsequent real runs used
+   only the repaired formal lifecycle, released all three ports and reopened H2.
+3. The adapter converted runtime manga/chapter IDs to strings. Real GraphQL requests
+   failed with `Expected a value that can be converted to type 'Int' but it was a 'String'`.
+   It now retains positive 32-bit integers; source IDs remain strings to preserve their
+   larger values. Regression coverage checks outbound ID types and rejects invalid IDs.
+4. Final deterministic browser acceptance exposed incomplete HTTP connections holding
+   Local Core shutdown and SQLite open. Local Core now stops accepting connections,
+   closes existing HTTP connections, then closes SQLite in the server-close callback.
+   A real-Core incomplete-request regression failed before this fix and now passes.
 
-Full task logs remain under the worktree's Git-ignored
+Timeout handling remains explicit: after 40 seconds the supervisor disconnects IPC
+and allows another 5 seconds for cooperative cleanup. If the Core is wholly unresponsive,
+it reports shutdown failure rather than silently force-killing a database process.
+
+## Retention and restart evidence
+
+The user retained the item and advanced to page 2 in the formal UI. Read-only inspection
+of Comic Free SQLite decoded the durable comic key to `{title,url}` and chapter key to
+`{label,url}`. Both URLs contained provider UUIDs; neither contained Suwayomi runtime ID
+fields or image-page addresses. This inspection covered actual retained reading data,
+not an empty database. Host runtime IDs and upstream image URLs were not persisted as
+Comic Free identity.
+
+After application-level shutdown and restart, all rows in `library_items`,
+`source_bindings`, `reading_progress` and `last_known_snapshots` matched the pre-restart
+snapshot. The old Local Core page session returned HTTP 404 with retryable
+`reader_session_not_found`. Clicking the formal Library's `Resume reading` created a
+new session, restored page 2 of 48, and decoded the image at 600 × 872.
+
+Final shutdown exited 0. Ports 3210, 5173 and 4568 were successfully rebound and released;
+no H2 `.lock.db` remained. No task JVM was left running.
+
+## Deterministic acceptance and logs
+
+`pnpm verify`: exit 0; typecheck/build passed, **73 unit/integration tests and 4 Chrome
+acceptance journeys passed**. Tests include cooperative Plugin Host shutdown, propagation
+of Local Core shutdown failure, preservation of unexpected-exit causes, repeated-stop
+waiting, timed-out shutdown via IPC disconnect, incomplete HTTP requests, GraphQL Int requests and invalid
+runtime IDs. The original supervisor and adapter regressions were observed failing before
+the fixes. The fixture suite does not depend on MangaDex, Java downloads or live content.
+
+Full redacted text evidence remains under the worktree's Git-ignored
 `.local-data/test-output/07-mangadex-smoke/`:
 
-- `deterministic.log`: complete verification output.
-- `live-process.log`: formal supervisor startup/shutdown output.
-- `live-evidence.json`: timestamped host/extension/source responses and SQLite counts.
-- `attach-cleanup.log`, `cleanup-verification.txt`, `cleanup-result.json`: approved cleanup command output, successful port probes and timestamped process/lock checks.
-- `shutdown.txt`: successful probes for 3210/5173; 4568 probe failed with EADDRINUSE (recorded separately in `shutdown-failure.txt`).
+- `supervisor-red.log`, `adapter-red.log`, `review-red.log`, `http-shutdown-red.log`, `deterministic-fixed.log`.
+- `registration.json`, `registered-sources.json`, `browser-page-evidence.json`.
+- `durable-identity.json`, `restart-persistence.txt`, `stale-session.json`, `resume-evidence.json`.
+- `final-lifecycle.json`, `final-lifecycle.log`, `final-process-check.json`: real entrypoint restart/exit code, extension reopen, remaining JVM and H2 lock counts.
+- `live-process-retry.log`, `live-reading-fixed.log`, `live-resume-process.log`, `final-shutdown.txt`.
 
-Evidence contains no image bodies, credentials, cookies or upstream page URLs.
-Temporary execution/probe scripts stay in the worktree's uncommitted `work/` folder;
-only documentation belongs in the proposed project change.
-
-## Necessary next step
-
-Establish a supported registration path for the existing approved artifact, or obtain
-separate source-specific approval for an installable MangaDex package and its exact
-version/source before downloading it. Do not silently reuse the historical H2 database.
-Then repeat the formal WebUI reading journey and fill in the missing observed page and
-retained-identity evidence. No push or merge is part of this task's authorization.
+Earlier failed-run and authorized cleanup logs remain in the same task directory.
+Logs exclude credentials, cookies, upstream image URLs and image bodies. The temporary
+visual-inspection screenshot is separate from text logs, in uncommitted `work/07-reader.png`.
+Public titles, chapters, page counts, hashes and availability above are observations
+from this run only; future optional failures must be classified independently of the
+fixture acceptance gate.

@@ -115,9 +115,14 @@ const close = async () => {
     catalogStore.close();
     process.exit(exitCode);
   });
+  server.closeAllConnections();
 };
 process.once("SIGINT", () => void close());
 process.once("SIGTERM", () => void close());
+process.once("disconnect", () => void close());
+process.on("message", (message) => {
+  if (message === "shutdown") void close();
+});
 
 function initialPluginHostStatus(
   jarPath: string | undefined,
