@@ -25,7 +25,7 @@ Status: PARTIALLY VERIFIED
 - Suwayomi reading adapter: `apps/core/src/suwayomi-reading-adapter.ts`; validates GraphQL responses, derives durable keys from provider URLs, re-resolves runtime ids, and fetches bounded image bytes only from the configured loopback Plugin Host.
 - Source Plugin changes: `apps/core/src/source-plugin-change.ts` owns serialized, approval-gated bounded operations, safe logs, and the deterministic adapter; `apps/core/src/catalog-store.ts` atomically persists normalized providers and synchronizes Source Bindings; `apps/core/src/suwayomi-source-plugin-change.ts` translates install/update to Suwayomi GraphQL while disable remains a persistent Comic Free-local state and does not uninstall the extension.
 - Shared contracts: `packages/contracts/src/index.ts` and `packages/contracts/src/reading.ts`; runtime-validate the `v1` health, Plugin Host lifecycle, catalog, reader-session, Library Item, error, and Reading Progress boundaries.
-- Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes.
+- Development supervisor: `scripts/start-dev.ts` and `scripts/dev-supervisor.ts`; starts the Local Core and Browser WebUI, waits for readiness, reports failures, and shuts down both processes. Local Core shutdown uses IPC so Windows can await its managed Plugin Host before exit; `scripts/dev-supervisor-lifecycle.test.ts` covers cooperative shutdown and failure propagation.
 - Source plugin host: approved Suwayomi process lifecycle and trusted Mihon extension install/update/local-disable/restore are implemented; normalized providers are available to the management catalog after reload, and the configured Suwayomi adapter translates provider search and reading.
 
 ## Planned repository layout
@@ -90,6 +90,8 @@ Suwayomi-local numeric manga/chapter identifiers, resolved page lists, and upstr
 - Formal Suwayomi-to-Local-Core translation and Browser WebUI reader-session renewal: VALIDATED deterministically with recorded Suwayomi-shaped fixtures; a live configured-runtime run remains optional and UNVERIFIED.
 - Windows application-level graceful Suwayomi/H2 shutdown: VALIDATED on 2026-09-04 with official Suwayomi `v2.3.2243` at SHA-256 `821141B32E170D4A02D3CBDFED577ED8F07BD22383FF5F4132EBB5AE40E98DD5`. Two consecutive runs reached GraphQL readiness, queried the database, stopped through the in-JVM shutdown-agent endpoint, released port `4568`, left no H2 lock, and reopened `runtime/database.mv.db` cleanly.
 - Formal fixture-backed Comic Free REST contracts, initial reading-state migration, transactional retention, exact-byte session proxy, Browser WebUI journey, restart persistence, and approved Suwayomi process lifecycle: VALIDATED by tickets 02–04. Suwayomi catalog/reader translation remains UNVERIFIED.
+
+- Ticket 07 live observation and approved integration repairs: `docs/07-mangadex-smoke-observation.md`; real MangaDex page rendering, retained page-2 resume after restart, and normal three-port release validated on 2026-09-05.
 
 ## Uncertainty
 
