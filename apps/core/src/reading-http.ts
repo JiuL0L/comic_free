@@ -7,6 +7,7 @@ import {
   READER_SESSIONS_PATH,
   SOURCE_BINDING_REASON_CODES,
   parseCreateReaderSessionRequest,
+  parseLibraryItemId,
   parseRetainLibraryItemRequest,
   parseUpdateProgressRequest,
   type ApiErrorResponse,
@@ -97,6 +98,22 @@ function requireQuery(value: string | null, field: string): string {
   return value;
 }
 
+function requireNoQuery(requestUrl: URL): void {
+  if ([...requestUrl.searchParams.keys()].length > 0) {
+    throw new TypeError("Invalid delete Library Item request: query parameters are not allowed.");
+  }
+}
+
+function requireEmptyBody(request: IncomingMessage): void {
+  const contentLength = request.headers["content-length"];
+  if (
+    request.headers["transfer-encoding"] !== undefined ||
+    (contentLength !== undefined && contentLength !== "0")
+  ) {
+    throw new TypeError("Invalid delete Library Item request: a request body is not allowed.");
+  }
+}
+
 function parseUnavailableRequest(value: unknown): SourceBindingReasonCode {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new TypeError("Invalid unavailable request: expected a JSON object.");
@@ -129,6 +146,7 @@ export function createReadingHttpHandler(service: ReadingService) {
     const progressMatch = pathname.match(
       /^\/api\/v1\/library-items\/([^/]+)\/progress$/,
     );
+    const deleteMatch = pathname.match(/^\/api\/v1\/library-items\/([^/]+)$/);
     const unavailableMatch = pathname.match(
       /^\/api\/v1\/fixture\/source-bindings\/([^/]+)\/unavailable$/,
     );
@@ -137,7 +155,9 @@ export function createReadingHttpHandler(service: ReadingService) {
       pathname === READING_SOURCE_PLUGIN_PATH ||
       pathname === READER_SESSIONS_PATH ||
       pathname === LIBRARY_ITEMS_PATH ||
-      Boolean(detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch);
+      Boolean(
+        detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || deleteMatch,
+      );
     if (!known) return false;
 
     try {
@@ -237,6 +257,19 @@ export function createReadingHttpHandler(service: ReadingService) {
           return true;
         }
         methodNotAllowed(response, "GET, POST");
+        return true;
+      }
+
+      if (deleteMatch) {
+        if (request.method !== "DELETE") {
+          methodNotAllowed(response, "DELETE");
+          return true;
+        }
+        requireNoQuery(requestUrl);
+        requireEmptyBody(request);
+        const libraryItemId = parseLibraryItemId(decodeURIComponent(deleteMatch[1] as string));
+        service.deleteLibraryItem(libraryItemId);
+        writeJson(response, 200, { deletedId: libraryItemId });
         return true;
       }
 

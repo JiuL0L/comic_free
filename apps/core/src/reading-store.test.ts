@@ -148,6 +148,131 @@ test("enforces foreign keys and deletes a Library Item only through an explicit 
   }
 });
 
+test("a failed deletion rolls back and a successful deletion cascades only target records", () => {
+  const directory = createTestDirectory();
+  const databasePath = path.join(directory, "comic-free.sqlite");
+  const store = new ReadingStore(databasePath, () => FIXED_TIME);
+
+  const counts = (libraryItemId: string) => {
+    const database = new DatabaseSync(databasePath);
+    const result = database
+      .prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM library_items WHERE id = ?) AS libraryItems,
+          (SELECT COUNT(*) FROM last_known_snapshots WHERE library_item_id = ?) AS snapshots,
+          (SELECT COUNT(*) FROM source_bindings WHERE library_item_id = ?) AS bindings,
+          (SELECT COUNT(*) FROM reading_progress WHERE library_item_id = ?) AS progress
+      `)
+      .get(libraryItemId, libraryItemId, libraryItemId, libraryItemId) as {
+      bindings: number;
+      libraryItems: number;
+      progress: number;
+      snapshots: number;
+    };
+    database.close();
+    return {
+      bindings: Number(result.bindings),
+      libraryItems: Number(result.libraryItems),
+      progress: Number(result.progress),
+      snapshots: Number(result.snapshots),
+    };
+  };
+
+  try {
+    const target = store.retain(CONTEXT);
+    const other = store.retain({
+      ...CONTEXT,
+      comicKey: "comic/unrelated",
+      title: "Unrelated Comic",
+    });
+    const setup = new DatabaseSync(databasePath);
+    setup.exec(`
+      CREATE TRIGGER reject_library_delete
+      BEFORE DELETE ON library_items
+      WHEN OLD.id = '${target.id}'
+      BEGIN
+        SELECT RAISE(ABORT, 'fixture delete rollback');
+      END;
+    `);
+    setup.close();
+
+    assert.throws(() => store.delete(target.id), /fixture delete rollback/);
+    assert.deepEqual(counts(target.id), {
+      libraryItems: 1,
+      snapshots: 1,
+      bindings: 1,
+      progress: 1,
+    });
+    assert.deepEqual(counts(other.id), {
+      libraryItems: 1,
+      snapshots: 1,
+      bindings: 1,
+      progress: 1,
+    });
+
+    const cleanup = new DatabaseSync(databasePath);
+    cleanup.exec("DROP TRIGGER reject_library_delete");
+    cleanup.close();
+    assert.equal(store.delete(target.id), true);
+    assert.deepEqual(counts(target.id), {
+      libraryItems: 0,
+      snapshots: 0,
+      bindings: 0,
+      progress: 0,
+    });
+    assert.deepEqual(counts(other.id), {
+      libraryItems: 1,
+      snapshots: 1,
+      bindings: 1,
+      progress: 1,
+    });
+  } finally {
+    store.close();
+    removeTestDirectory(directory);
+  }
+});
+
+test("deletion cascades only its local records across every Source Binding availability", () => {
+  const directory = createTestDirectory();
+  const databasePath = path.join(directory, "comic-free.sqlite");
+  let store = new ReadingStore(databasePath, () => FIXED_TIME);
+
+  try {
+    for (const availability of ["available", "unavailable", "refresh_required"] as const) {
+      const target = store.retain({
+        ...CONTEXT,
+        comicKey: `comic/delete-${availability}`,
+        title: `Delete ${availability}`,
+      });
+      const unrelated = store.retain({
+        ...CONTEXT,
+        comicKey: `comic/keep-${availability}`,
+        title: `Keep ${availability}`,
+      });
+      if (availability === "unavailable") {
+        store.markBindingUnavailable(target.sourceBinding.id, "comic_provider_unreachable");
+      }
+      if (availability === "refresh_required") {
+        store.markSourcePluginBindingsRefreshRequired("fixture:reader");
+      }
+
+      assert.equal(store.delete(target.id), true);
+      assert.equal(store.get(target.id), null);
+      assert.deepEqual(store.get(unrelated.id)?.snapshot.title, unrelated.snapshot.title);
+    }
+
+    store.close();
+    store = new ReadingStore(databasePath, () => "2026-09-04T13:00:00.000Z");
+    assert.deepEqual(
+      store.list().map((item) => item.snapshot.title),
+      ["Keep available", "Keep refresh_required", "Keep unavailable"],
+    );
+  } finally {
+    store.close();
+    removeTestDirectory(directory);
+  }
+});
+
 test("Source Plugin changes preserve local reading state while bindings require recovery", () => {
   const directory = createTestDirectory();
   const databasePath = path.join(directory, "comic-free.sqlite");
