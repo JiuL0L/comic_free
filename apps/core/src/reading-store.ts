@@ -320,6 +320,17 @@ export class ReadingStore {
     return row ? this.#map(row) : null;
   }
 
+  getByBindingId(sourceBindingId: string): LibraryItem | null {
+    const row = this.#database.prepare(`${LIBRARY_SELECT} WHERE binding.id = ?`).get(sourceBindingId) as unknown as LibraryRow | undefined;
+    return row ? this.#map(row) : null;
+  }
+
+  markBindingAvailable(sourceBindingId: string): LibraryItem | null {
+    const now = this.#now();
+    this.#database.prepare(`UPDATE source_bindings SET availability = 'available', reason_code = NULL, observed_at = ?, updated_at = ? WHERE id = ?`).run(now, now, sourceBindingId);
+    return this.getByBindingId(sourceBindingId);
+  }
+
   list(): LibraryItem[] {
     const rows = this.#database
       .prepare(`${LIBRARY_SELECT} ORDER BY snapshot.title COLLATE NOCASE, item.id`)

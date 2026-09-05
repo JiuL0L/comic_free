@@ -55,7 +55,7 @@ if (configuredJarPath && approvedSha256) {
   }
 }
 
-const readingService = new ReadingService(createReadingAdapter(), readingStore);
+const readingService = new ReadingService(createReadingAdapter(), readingStore, catalogStore);
 const pluginHostStatus = () => pluginHost?.status() ?? pluginHostFallback;
 const sourcePluginChangeAdapter = pluginHost
   ? new SuwayomiSourcePluginChangeAdapter(pluginHostStatus)

@@ -535,3 +535,13 @@ export function comicChaptersUrl(sourcePluginKey: string, comicKey: string): str
 export function readerPageUrl(sessionId: string, pageIndex: number): string {
   return `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/pages/${pageIndex}`;
 }
+
+export function sourceBindingRefreshUrl(sourceBindingId: string): string {
+  return `${LOCAL_CORE_ORIGIN}/api/v1/source-bindings/${encodeURIComponent(sourceBindingId)}/refresh`;
+}
+
+export function parseRefreshSourceBindingRequest(value: unknown): Record<string, never> {
+  const request = record(value, "binding refresh request");
+  exactFields(request, [], "binding refresh request");
+  return {};
+}

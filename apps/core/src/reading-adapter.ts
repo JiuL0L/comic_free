@@ -24,6 +24,7 @@ export interface ReadingPage {
 }
 
 export interface ReadingAdapter {
+  readonly comicProviderKey?: string;
   readonly sourcePlugin: {
     key: string;
     name: string;
@@ -41,6 +42,7 @@ type ReadingAdapterErrorCode =
   | "chapter_not_found"
   | "invalid_page_type"
   | "page_not_found"
+  | "page_fetch_failed"
   | "page_timeout"
   | "page_too_large"
   | "unsafe_page_reference";
@@ -96,6 +98,7 @@ const PAGES: Readonly<Record<(typeof PAGE_KEYS)[number], Buffer>> = Object.freez
 
 export class FixtureReadingAdapter implements ReadingAdapter {
   readonly sourcePlugin = FIXTURE_SOURCE_PLUGIN;
+  readonly comicProviderKey = "fixture.provider";
 
   async search(query: string): Promise<CatalogSearchItem[]> {
     const normalized = query.trim().toLowerCase();

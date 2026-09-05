@@ -314,7 +314,7 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
         });
         if (!response.ok) {
           throw new ReadingAdapterError(
-            "comic_provider_unreachable",
+            "page_fetch_failed",
             `The Comic Provider page request failed with HTTP ${response.status}.`,
             response.status >= 500,
           );
@@ -337,7 +337,8 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
             true,
           );
         }
-        throw error;
+        if (error instanceof ReadingAdapterError) throw error;
+        throw new ReadingAdapterError("page_fetch_failed", "The image request failed temporarily. Retry this page.", true);
       }
     });
   }
@@ -398,6 +399,8 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
       title: details.title,
     };
   }
+
+  get comicProviderKey(): string { return this.#comicProviderKey; }
 
   async #normalize<T>(operation: () => Promise<T>): Promise<T> {
     try {

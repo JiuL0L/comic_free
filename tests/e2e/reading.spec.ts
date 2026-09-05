@@ -9,6 +9,7 @@ import {
   LIBRARY_ITEMS_PATH,
   LOCAL_CORE_ORIGIN,
   READER_SESSIONS_PATH,
+  SOURCE_PLUGIN_CHANGES_PATH,
   WEB_UI_URL,
   parseLibraryItemsResponse,
 } from "@comic-free/contracts";
@@ -71,6 +72,19 @@ async function stopApplication(): Promise<void> {
   }
 }
 
+function sourcePluginChange(action: "disable" | "install" | "restore") {
+  return {
+    action,
+    approval: { approved: true },
+    source: {
+      expectedVersion: action === "disable" ? null : "1.0.0",
+      kind: "extension_store",
+      packageName: "fixture:reader",
+      storeUrl: "https://fixtures.comic-free.invalid/repo/index.pb",
+    },
+  };
+}
+
 test.beforeAll(async () => {
   assertSafeRuntimePath();
   await rm(RUNTIME_ROOT, { recursive: true, force: true });
@@ -87,6 +101,11 @@ test.afterAll(async () => {
 test("reads, retains, disables provider reading, and restores local state after restart", async ({
   page,
 }) => {
+  const installed = await page.request.post(
+    `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+    { data: sourcePluginChange("install") },
+  );
+  expect(installed.status()).toBe(200);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Find a comic" })).toBeVisible();
   await expect(page.getByText("Your Library is empty.")).toBeVisible();
@@ -176,6 +195,36 @@ test("reads, retains, disables provider reading, and restores local state after 
   await expect(reader.getByText("Page 2 of 3", { exact: true })).toBeVisible();
   await reader.getByRole("button", { name: "Retain in Library" }).click();
   await expect(reader.getByText("Saved to Library")).toBeVisible();
+
+  await test.step("shows a failed first Resume and lets the reader retry before a Reader exists", async () => {
+    await page.reload();
+    const libraryRegion = page.getByRole("region", { name: "Your Library" });
+    await expect(libraryRegion.getByRole("button", { name: "Resume reading" })).toBeEnabled();
+
+    const resumeFailure = async (route: import("@playwright/test").Route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          error: {
+            code: "source_binding_unavailable",
+            message: "Reading is unavailable because the Source Binding is unreachable.",
+            retryable: true,
+          },
+        }),
+        contentType: "application/json",
+        status: 409,
+      });
+    };
+    await page.route("**/api/v1/reader-sessions", resumeFailure);
+    await libraryRegion.getByRole("button", { name: "Resume reading" }).click();
+    await expect(libraryRegion.getByRole("alert")).toContainText(
+      "Reading is unavailable because the Source Binding is unreachable.",
+    );
+    await expect(libraryRegion.getByRole("button", { name: "Retry Resume" })).toBeVisible();
+    await page.unroute("**/api/v1/reader-sessions", resumeFailure);
+    await libraryRegion.getByRole("button", { name: "Retry Resume" }).click();
+    await expect(page.getByRole("region", { name: "Reader" })).toBeVisible();
+  });
+
   await reader.getByRole("button", { name: "Next page" }).click();
   await expect(reader.getByText("Page 3 of 3", { exact: true })).toBeVisible();
   await expect(reader.getByText("Reading Progress saved")).toBeVisible();
@@ -210,11 +259,11 @@ test("reads, retains, disables provider reading, and restores local state after 
   });
   expect(arbitraryUrl.status()).toBe(400);
 
-  const unavailable = await page.request.post(
-    `${LOCAL_CORE_ORIGIN}/api/v1/fixture/source-bindings/${item?.sourceBinding.id}/unavailable`,
-    { data: { reasonCode: "comic_provider_unreachable" } },
+  const disabled = await page.request.post(
+    `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+    { data: sourcePluginChange("disable") },
   );
-  expect(unavailable.status()).toBe(200);
+  expect(disabled.status()).toBe(200);
   expect(oldPageUrl).not.toBeNull();
   const invalidatedSession = await page.request.get(oldPageUrl as string);
   expect(invalidatedSession.status()).toBe(404);
@@ -231,20 +280,53 @@ test("reads, retains, disables provider reading, and restores local state after 
   );
   expect(blockedCatalogRead.status()).toBe(409);
 
+  await test.step("keeps the old Reader page and durable progress when a disabled Source Plugin rejects progress", async () => {
+    await reader.getByRole("button", { name: "Previous page" }).click();
+    await expect(reader.getByText("Page 3 of 3", { exact: true })).toBeVisible();
+    await expect(reader.getByText("Reading is unavailable because the Source Plugin is disabled.")).toBeVisible();
+    const retainedAfterRejectedProgress = parseLibraryItemsResponse(
+      await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json(),
+    ).items[0];
+    expect(retainedAfterRejectedProgress?.progress.pageIndex).toBe(2);
+  });
+
   await page.reload();
   const libraryRegion = page.getByRole("region", { name: "Your Library" });
   await expect(libraryRegion.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
-  await expect(libraryRegion.getByText("Comic Provider unreachable")).toBeVisible();
+  await expect(libraryRegion.getByText("Source Plugin disabled")).toBeVisible();
   await expect(libraryRegion.getByText("Chapter 1 · The Local Beginning")).toBeVisible();
   await expect(libraryRegion.getByText("Page 3 of 3")).toBeVisible();
-  await expect(libraryRegion.getByRole("button", { name: "Resume reading" })).toBeDisabled();
+  await expect(libraryRegion.getByRole("button", { name: "Refresh Source Binding" })).toBeVisible();
+
+  await test.step("shows a disabled refresh failure, then restores and retries explicitly without opening a Reader", async () => {
+    await libraryRegion.getByRole("button", { name: "Refresh Source Binding" }).click();
+    await expect(libraryRegion.getByRole("alert")).toContainText(
+      "Reading is unavailable because the Source Plugin is disabled.",
+    );
+    await expect(libraryRegion.getByRole("button", { name: "Retry refresh" })).toBeVisible();
+
+    const restored = await page.request.post(
+      `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+      { data: sourcePluginChange("restore") },
+    );
+    expect(restored.status()).toBe(200);
+    await page.getByRole("button", { name: "Reload Library" }).click();
+    await expect(libraryRegion.getByText("Source Binding refresh required")).toBeVisible();
+
+    await libraryRegion.getByRole("button", { name: "Retry refresh" }).click();
+    await expect(libraryRegion.getByText("Source Binding refreshed. Resume reading when ready.")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Reader" })).toHaveCount(0);
+    await expect(libraryRegion.getByRole("button", { name: "Resume reading" })).toBeVisible();
+    await libraryRegion.getByRole("button", { name: "Resume reading" }).click();
+    await expect(page.getByRole("region", { name: "Reader" }).getByText("Page 3 of 3")).toBeVisible();
+  });
 
   await page.goto("about:blank");
   await stopApplication();
   await startApplication();
   await page.goto("/");
   await expect(libraryRegion.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
-  await expect(libraryRegion.getByText("Comic Provider unreachable")).toBeVisible();
+  await expect(libraryRegion.getByText("Available")).toBeVisible();
   await expect(libraryRegion.getByText("Page 3 of 3")).toBeVisible();
 
   const staleSession = await page.request.get(oldPageUrl as string);

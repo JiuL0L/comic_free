@@ -16,6 +16,7 @@ import {
   type ReadingChapter,
   type ReadingPage,
 } from "./reading-adapter.ts";
+import type { CatalogStore } from "./catalog-store.ts";
 import type { ReadingStore } from "./reading-store.ts";
 
 export class ReadingServiceError extends Error {
@@ -50,11 +51,16 @@ function requirePageIndex(pageIndex: number, pageCount: number): void {
 export class ReadingService {
   readonly #adapter: ReadingAdapter;
   readonly #store: ReadingStore;
+  readonly #catalogStore: CatalogStore | undefined;
+  readonly #comicProviderGenerations = new Map<string, number>();
+  readonly #comicGenerations = new Map<string, number>();
+  readonly #sourcePluginGenerations = new Map<string, number>();
   readonly #sessions = new Map<string, ReaderSessionRecord>();
 
-  constructor(adapter: ReadingAdapter, store: ReadingStore) {
+  constructor(adapter: ReadingAdapter, store: ReadingStore, catalogStore?: CatalogStore) {
     this.#adapter = adapter;
     this.#store = store;
+    this.#catalogStore = catalogStore;
   }
 
   #requirePlugin(sourcePluginKey: string): void {
@@ -65,6 +71,74 @@ export class ReadingService {
         false,
         404,
       );
+    }
+  }
+
+  #requireReading(sourcePluginKey: string, comicKey?: string, refreshing = false): void {
+    this.#requirePlugin(sourcePluginKey);
+    const plugin = this.#catalogStore?.readCatalog().entries.find(entry => entry.pluginKey === sourcePluginKey);
+    if (plugin && plugin.status !== "healthy") {
+      throw new ReadingServiceError("source_plugin_unavailable", `Reading is unavailable because the Source Plugin is ${plugin.reasonCode ?? plugin.status}.`, true, 409);
+    }
+    if (comicKey && !refreshing) {
+      this.#requireAvailableBinding(this.#store.getBySourceIdentity(sourcePluginKey, comicKey));
+    }
+  }
+
+  #providerKey(sourcePluginKey: string, comicKey?: string): string | undefined {
+    return (comicKey ? this.#store.getBySourceIdentity(sourcePluginKey, comicKey)?.sourceBinding.comicProviderKey : undefined) ?? this.#adapter.comicProviderKey;
+  }
+
+  #readingPolicyRevision(sourcePluginKey: string, comicKey?: string): string {
+    const plugin = this.#catalogStore?.readCatalog().entries.find(entry => entry.pluginKey === sourcePluginKey);
+    return JSON.stringify([this.#sourcePluginGenerations.get(sourcePluginKey) ?? 0, this.#comicProviderGenerations.get(JSON.stringify([sourcePluginKey, this.#providerKey(sourcePluginKey, comicKey)])) ?? 0, this.#comicGenerations.get(comicKey ?? "") ?? 0, plugin]);
+  }
+
+  async #read<T>(sourcePluginKey: string, comicKey: string | undefined, operation: () => Promise<T>, refreshing = false): Promise<T> {
+    this.#requireReading(sourcePluginKey, comicKey, refreshing);
+    const revision = this.#readingPolicyRevision(sourcePluginKey, comicKey);
+    let value: T;
+    try {
+      value = await operation();
+    } catch (error) {
+      // A result from an earlier Source Plugin generation must not overwrite a newer policy.
+      this.#requireReading(sourcePluginKey, comicKey, refreshing);
+      if (revision === this.#readingPolicyRevision(sourcePluginKey, comicKey)) this.#recordFailure(sourcePluginKey, comicKey, error);
+      throw error;
+    }
+    this.#requireReading(sourcePluginKey, comicKey, refreshing);
+    if (revision !== this.#readingPolicyRevision(sourcePluginKey, comicKey)) {
+      throw new ReadingServiceError("source_binding_refresh_required", "The Source Plugin changed while reading. Retry with a new reader session or refresh the binding.", true, 409);
+    }
+    return value;
+  }
+
+  #recordFailure(sourcePluginKey: string, comicKey: string | undefined, error: unknown): void {
+    if (!(error instanceof ReadingAdapterError)) return;
+    const pluginFailure = ["disabled", "missing", "incompatible", "plugin_host_unavailable"].includes(error.code);
+    const providerFailure = error.code === "comic_provider_unreachable";
+    if (!pluginFailure && !providerFailure) return;
+    const providerKey = this.#providerKey(sourcePluginKey, comicKey);
+    if (providerFailure && !providerKey) return;
+    for (const item of this.#store.list()) {
+      if (item.sourceBinding.sourcePluginKey === sourcePluginKey && (pluginFailure || item.sourceBinding.comicProviderKey === providerKey)) {
+        this.#store.markBindingUnavailable(item.sourceBinding.id, error.code as SourceBindingReasonCode);
+      }
+    }
+    if (pluginFailure) this.invalidateSourcePlugin(sourcePluginKey);
+    else {
+      const scope = JSON.stringify([sourcePluginKey, providerKey]);
+      this.#comicProviderGenerations.set(scope, (this.#comicProviderGenerations.get(scope) ?? 0) + 1);
+      for (const [id, session] of this.#sessions) {
+        if (session.sourcePluginKey === sourcePluginKey && session.comicProviderKey === providerKey) this.#sessions.delete(id);
+      }
+    }
+  }
+
+  #invalidateComic(sourcePluginKey: string, comicKey: string): void {
+    this.#comicGenerations.set(comicKey, (this.#comicGenerations.get(comicKey) ?? 0) + 1);
+    for (const [id, session] of this.#sessions) {
+      if (session.sourcePluginKey === sourcePluginKey && session.comicKey === comicKey) this.#sessions.delete(id);
     }
   }
 
@@ -87,8 +161,7 @@ export class ReadingService {
   }
 
   async search(sourcePluginKey: string, query: string): Promise<CatalogSearchItem[]> {
-    this.#requirePlugin(sourcePluginKey);
-    return this.#adapter.search(query);
+    return this.#read(sourcePluginKey, undefined, () => this.#adapter.search(query));
   }
 
   getSourcePlugin(): { sourcePlugin: { key: string; name: string } } {
@@ -101,16 +174,14 @@ export class ReadingService {
   }
 
   async getDetails(sourcePluginKey: string, comicKey: string) {
-    this.#requirePlugin(sourcePluginKey);
-    return this.#adapter.getDetails(comicKey);
+    return this.#read(sourcePluginKey, comicKey, () => this.#adapter.getDetails(comicKey));
   }
 
   async getChapters(
     sourcePluginKey: string,
     comicKey: string,
   ): Promise<ReadingChapter[]> {
-    this.#requirePlugin(sourcePluginKey);
-    return this.#adapter.getChapters(comicKey);
+    return this.#read(sourcePluginKey, comicKey, () => this.#adapter.getChapters(comicKey));
   }
 
   async createSession(
@@ -150,7 +221,7 @@ export class ReadingService {
     }
 
     this.#requirePlugin(sourcePluginKey);
-    const resolution = await this.#adapter.resolveChapter(comicKey, chapterKey);
+    const resolution = await this.#read(sourcePluginKey, comicKey, () => this.#adapter.resolveChapter(comicKey, chapterKey));
     if (existingLibraryItemId && !this.#store.get(existingLibraryItemId)) {
       throw new ReadingServiceError(
         "library_item_not_found",
@@ -215,10 +286,11 @@ export class ReadingService {
         404,
       );
     }
-    return this.#adapter.readPage(pageKey);
+    return this.#read(session.sourcePluginKey, session.comicKey, () => this.#adapter.readPage(pageKey));
   }
 
   invalidateSourcePlugin(sourcePluginKey: string): number {
+    this.#sourcePluginGenerations.set(sourcePluginKey, (this.#sourcePluginGenerations.get(sourcePluginKey) ?? 0) + 1);
     let invalidated = 0;
     for (const [sessionId, session] of this.#sessions) {
       if (session.sourcePluginKey === sourcePluginKey) {
@@ -239,6 +311,7 @@ export class ReadingService {
         404,
       );
     }
+    this.#requireReading(session.sourcePluginKey, session.comicKey);
     requirePageIndex(input.pageIndex, session.pageCount);
     return this.#store.retain({
       chapterKey: session.chapterKey,
@@ -251,6 +324,44 @@ export class ReadingService {
       sourcePluginKey: session.sourcePluginKey,
       title: session.title,
     });
+  }
+
+  async refreshBinding(sourceBindingId: string): Promise<LibraryItem> {
+    const item = this.#store.getByBindingId(sourceBindingId);
+    if (!item) {
+      throw new ReadingServiceError("source_binding_not_found", "The requested Source Binding does not exist.", false, 404);
+    }
+    const { sourcePluginKey, durableComicKey, comicProviderKey } = item.sourceBinding;
+    this.#requireReading(sourcePluginKey, durableComicKey, true);
+    try {
+      const resolution = await this.#read(sourcePluginKey, durableComicKey, () => this.#adapter.resolveChapter(durableComicKey, item.progress.chapterKey), true);
+      if (resolution.comic.sourcePluginKey !== sourcePluginKey || resolution.comic.comicProviderKey !== comicProviderKey || resolution.comic.comicKey !== durableComicKey || resolution.chapter.chapterKey !== item.progress.chapterKey) {
+        throw new ReadingServiceError("unresolved_catalog_item", "The original comic or chapter identity could not be resolved. The saved progress is unchanged.", true, 409);
+      }
+      const current = this.#store.getByBindingId(sourceBindingId);
+      if (!current || JSON.stringify(current) !== JSON.stringify(item)) {
+        throw new ReadingServiceError("source_binding_changed", "The binding or saved progress changed during refresh. Retry the refresh.", true, 409);
+      }
+      requirePageIndex(item.progress.pageIndex, resolution.pageKeys.length);
+      this.#requireReading(sourcePluginKey, durableComicKey, true);
+      this.#invalidateComic(sourcePluginKey, durableComicKey);
+      const refreshed = this.#store.markBindingAvailable(sourceBindingId);
+      if (!refreshed) throw new ReadingServiceError("source_binding_not_found", "The Source Binding no longer exists.", false, 404);
+      this.#catalogStore?.clearBindingsRefreshRequiredWhenAllAvailable(sourcePluginKey);
+      return refreshed;
+    } catch (error) {
+      const current = this.#store.getByBindingId(sourceBindingId);
+      // Keep concurrent disable, failure, deletion and progress changes authoritative.
+      if (current && JSON.stringify(current) === JSON.stringify(item)) {
+        this.#requireReading(sourcePluginKey, durableComicKey, true);
+        if (!(error instanceof ReadingServiceError && ["source_binding_changed", "source_binding_refresh_required"].includes(error.code))) {
+          const code = normalizeReadingError(error).code;
+          this.#store.markBindingUnavailable(sourceBindingId, ["chapter_not_found", "catalog_item_not_found", "unresolved_catalog_item"].includes(code) ? "unresolved_catalog_item" : "refresh_failed");
+          this.#invalidateComic(sourcePluginKey, durableComicKey);
+        }
+      }
+      throw error;
+    }
   }
 
   listLibrary(): LibraryItem[] {
@@ -278,8 +389,8 @@ export class ReadingService {
   }
 
   updateProgress(libraryItemId: string, input: UpdateProgressRequest): LibraryItem {
-    const item = this.#store.updateProgress(libraryItemId, input);
-    if (!item) {
+    const current = this.#store.get(libraryItemId);
+    if (!current) {
       throw new ReadingServiceError(
         "library_item_not_found",
         "The requested Library Item does not exist.",
@@ -287,7 +398,8 @@ export class ReadingService {
         404,
       );
     }
-    return item;
+    this.#requireReading(current.sourceBinding.sourcePluginKey, current.sourceBinding.durableComicKey);
+    return this.#store.updateProgress(libraryItemId, input) as LibraryItem;
   }
 
   markBindingUnavailable(
@@ -303,7 +415,7 @@ export class ReadingService {
         404,
       );
     }
-    this.invalidateSourcePlugin(item.sourceBinding.sourcePluginKey);
+    this.#invalidateComic(item.sourceBinding.sourcePluginKey, item.sourceBinding.durableComicKey);
     return item;
   }
 }
