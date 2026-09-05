@@ -20,12 +20,28 @@ import {
 import type { CatalogStore } from "./catalog-store.ts";
 import type { ReadingStore } from "./reading-store.ts";
 
+export type ReadingFailureLayer =
+  | "comic-provider"
+  | "local-core"
+  | "plugin-host"
+  | "source-plugin";
+
+function failureLayerForReason(reason: string | null): ReadingFailureLayer {
+  if (reason === "plugin_host_unavailable") return "plugin-host";
+  if (["disabled", "missing", "incompatible"].includes(reason ?? "")) {
+    return "source-plugin";
+  }
+  if (reason === "comic_provider_unreachable") return "comic-provider";
+  return "local-core";
+}
+
 export class ReadingServiceError extends Error {
   constructor(
     readonly code: string,
     message: string,
     readonly retryable: boolean,
     readonly status: number,
+    readonly failureLayer?: ReadingFailureLayer,
   ) {
     super(message);
     this.name = "ReadingServiceError";
@@ -79,7 +95,7 @@ export class ReadingService {
     this.#requirePlugin(sourcePluginKey);
     const plugin = this.#catalogStore?.readCatalog().entries.find(entry => entry.pluginKey === sourcePluginKey);
     if (plugin && plugin.status !== "healthy") {
-      throw new ReadingServiceError("source_plugin_unavailable", `Reading is unavailable because the Source Plugin is ${plugin.reasonCode ?? plugin.status}.`, true, 409);
+      throw new ReadingServiceError("source_plugin_unavailable", `Reading is unavailable because the Source Plugin is ${plugin.reasonCode ?? plugin.status}.`, true, 409, failureLayerForReason(plugin.reasonCode));
     }
     if (comicKey && !refreshing) {
       this.#requireAvailableBinding(this.#store.getBySourceIdentity(sourcePluginKey, comicKey));
@@ -92,7 +108,7 @@ export class ReadingService {
 
   #readingPolicyRevision(sourcePluginKey: string, comicKey?: string, providerKey?: string): string {
     const plugin = this.#catalogStore?.readCatalog().entries.find(entry => entry.pluginKey === sourcePluginKey);
-    return JSON.stringify([this.#sourcePluginGenerations.get(sourcePluginKey) ?? 0, this.#comicProviderGenerations.get(JSON.stringify([sourcePluginKey, providerKey ?? this.#providerKey(sourcePluginKey, comicKey)])) ?? 0, this.#comicGenerations.get(comicKey ?? "") ?? 0, plugin]);
+    return JSON.stringify([this.#sourcePluginGenerations.get(sourcePluginKey) ?? 0, this.#comicProviderGenerations.get(JSON.stringify([sourcePluginKey, providerKey ?? this.#providerKey(sourcePluginKey, comicKey)])) ?? 0, this.#comicGenerations.get(JSON.stringify([sourcePluginKey, comicKey])) ?? 0, plugin]);
   }
 
   async #read<T>(sourcePluginKey: string, comicKey: string | undefined, operation: (adapter: ReadingAdapter) => Promise<T>, refreshing = false, providerKey?: string): Promise<T> {
@@ -141,7 +157,8 @@ export class ReadingService {
   }
 
   #invalidateComic(sourcePluginKey: string, comicKey: string): void {
-    this.#comicGenerations.set(comicKey, (this.#comicGenerations.get(comicKey) ?? 0) + 1);
+    const scope = JSON.stringify([sourcePluginKey, comicKey]);
+    this.#comicGenerations.set(scope, (this.#comicGenerations.get(scope) ?? 0) + 1);
     for (const [id, session] of this.#sessions) {
       if (session.sourcePluginKey === sourcePluginKey && session.comicKey === comicKey) this.#sessions.delete(id);
     }
@@ -162,6 +179,7 @@ export class ReadingService {
       `Reading is unavailable because the Source Binding is ${item.sourceBinding.reasonCode ?? "unknown"}.`,
       true,
       409,
+      failureLayerForReason(item.sourceBinding.reasonCode),
     );
   }
 

@@ -21,11 +21,70 @@ import {
 import { writeJson } from "./http-response.ts";
 import {
   ReadingServiceError,
+  type ReadingFailureLayer,
   normalizeReadingError,
   type ReadingService,
 } from "./reading-service.ts";
 
 const MAX_JSON_BYTES = 64 * 1024;
+
+type ReadingRequestKind = "image" | "read" | "reader-session";
+
+export interface ReadingDiagnosticsLogEntry {
+  component: "local-core";
+  errorCode: string;
+  event: "reading_request_failed";
+  failureLayer: ReadingFailureLayer;
+  requestKind: ReadingRequestKind;
+  retryable: boolean;
+  route: string;
+  status: number;
+  timestamp: string;
+}
+
+export interface ReadingHttpHandlerOptions {
+  logger?: (entry: ReadingDiagnosticsLogEntry) => void;
+  now?: () => string;
+}
+
+function failureLayerFor(error: ReadingServiceError): ReadingFailureLayer {
+  if (error.failureLayer) return error.failureLayer;
+  if (error.code === "plugin_host_unavailable") return "plugin-host";
+  if (
+    error.code === "disabled" ||
+    error.code === "missing" ||
+    error.code === "incompatible" ||
+    error.code.startsWith("source_plugin_")
+  ) {
+    return "source-plugin";
+  }
+  if (
+    error.code === "comic_provider_unreachable" ||
+    error.code.startsWith("page_") ||
+    ["invalid_page_type", "unsafe_page_reference"].includes(error.code)
+  ) {
+    return "comic-provider";
+  }
+  return "local-core";
+}
+
+function requestDiagnostics(pathname: string): Pick<ReadingDiagnosticsLogEntry, "requestKind" | "route"> {
+  if (/^\/api\/v1\/reader-sessions\/[^/]+\/pages\/[^/]+$/.test(pathname)) {
+    return { requestKind: "image", route: "reader-page" };
+  }
+  if (pathname === READER_SESSIONS_PATH) {
+    return { requestKind: "reader-session", route: "reader-session" };
+  }
+  if (pathname === CATALOG_SEARCH_PATH) return { requestKind: "read", route: "catalog-search" };
+  if (/^\/api\/v1\/catalog\/comics\/[^/]+\/chapters$/.test(pathname)) {
+    return { requestKind: "read", route: "catalog-chapters" };
+  }
+  if (/^\/api\/v1\/catalog\/comics\/[^/]+$/.test(pathname)) {
+    return { requestKind: "read", route: "catalog-details" };
+  }
+  return { requestKind: "read", route: "reading-state" };
+}
+
 function writeError(response: ServerResponse, error: ReadingServiceError): void {
   const body: ApiErrorResponse = {
     error: {
@@ -136,7 +195,12 @@ function parseUnavailableRequest(value: unknown): SourceBindingReasonCode {
   return request.reasonCode as SourceBindingReasonCode;
 }
 
-export function createReadingHttpHandler(service: ReadingService) {
+export function createReadingHttpHandler(
+  service: ReadingService,
+  options: ReadingHttpHandlerOptions = {},
+) {
+  const logger = options.logger ?? ((entry: ReadingDiagnosticsLogEntry) => console.log(JSON.stringify(entry)));
+  const now = options.now ?? (() => new Date().toISOString());
   return async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
     const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
     const { pathname } = requestUrl;
@@ -320,7 +384,23 @@ export function createReadingHttpHandler(service: ReadingService) {
         return true;
       }
     } catch (error) {
-      writeError(response, invalidRequest(error));
+      const normalized = invalidRequest(error);
+      const diagnostics = requestDiagnostics(pathname);
+      try {
+        logger({
+          component: "local-core",
+          errorCode: normalized.code,
+          event: "reading_request_failed",
+          failureLayer: failureLayerFor(normalized),
+          ...diagnostics,
+          retryable: normalized.retryable,
+          status: normalized.status,
+          timestamp: now(),
+        });
+      } catch {
+        // Diagnostics are best-effort and must not change the HTTP response.
+      }
+      writeError(response, normalized);
       return true;
     }
 

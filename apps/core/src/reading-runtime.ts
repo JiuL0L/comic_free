@@ -40,7 +40,13 @@ export function createReadingRuntime(options: {
       const entries = catalog.entries;
       const changed = trusted.filter(plugin => {
         const old = entries.find(entry => entry.pluginKey === plugin.pluginKey);
-        return JSON.stringify(old?.providers) !== JSON.stringify(retainKnownProviders(old?.providers ?? [], plugin.providers.map(({sourceId: _id, ...provider}) => provider)));
+        const providers = retainKnownProviders(
+          old?.providers ?? [],
+          plugin.providers.map(({sourceId: _id, ...provider}) => provider),
+        );
+        return old?.name !== plugin.name ||
+          old?.version !== plugin.version ||
+          JSON.stringify(old?.providers) !== JSON.stringify(providers);
       });
       if (changed.length || catalog.lastRefresh?.status !== "healthy") catalogStore.recordSuccessfulRefresh({observedAt: new Date().toISOString(), entries: changed.map(plugin => ({name: plugin.name, pluginKey: plugin.pluginKey, version: plugin.version, status: 'healthy', reasonCode: null, removalEvidence: 'none', reportedObsolete: false, providers: plugin.providers.map(({sourceId: _id, ...provider}) => provider)}))});
       return trusted.flatMap(plugin => plugin.providers.map(provider => ({

@@ -1,6 +1,6 @@
 # Comic Free minimal formal MVP
 
-Status: ready-for-agent
+Status: implemented — deterministic acceptance verified locally; review follow-up awaiting publication
 
 ## Problem Statement
 
@@ -147,3 +147,9 @@ The Plugin Host lifecycle is explicit. Comic Free receives a user-specified Suwa
 - The main implementation risk is database-safe Windows shutdown of Suwayomi/H2. The lifecycle ticket must identify the supported application-level mechanism or document a narrowly bounded alternative with evidence; process disappearance alone is not acceptance.
 - The first implementation increment should end after the deterministic browser-visible fixture journey passes. SQLite retention, source-unavailable behavior, and the image proxy belong in that same tracer bullet because separating them would recreate the already-fragmented prototype evidence.
 - The next workflow step is `/to-tickets`, which should produce dependency-ordered, independently verifiable implementation tickets from this spec without expanding the scope.
+
+## Completion verification
+
+- Tickets 01–10 are resolved. The four follow-ups from the review of `9d02547` are implemented: plugin-scoped request invalidation, latest UI selection, bounded reading diagnostics, and external Host metadata refresh.
+- `pnpm verify` passed on 2026-09-05: typecheck, build, 103 unit/integration tests, and 8 Chrome E2E tests. Follow-up fixes are local until their branch is published and merged.
+- The optional live-provider evidence remains `docs/07-mangadex-smoke-observation.md`; this follow-up did not rerun third-party code or live providers.
