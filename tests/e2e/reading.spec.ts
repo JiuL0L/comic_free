@@ -142,6 +142,35 @@ test("reads, retains, disables provider reading, and restores local state after 
   await expect(reader.getByText("Rendered 800 × 1200")).toBeVisible();
   const oldPageUrl = await image.getAttribute("src");
 
+  expect(oldPageUrl).not.toBeNull();
+  const stalePagePath = new URL(oldPageUrl as string).pathname;
+  const stalePageRequest = (url: URL) => url.pathname === stalePagePath;
+  const rejectStalePage = async (route: import("@playwright/test").Route) => {
+    await route.fulfill({
+      body: JSON.stringify({
+        error: {
+          code: "reader_session_not_found",
+          message: "The reader session is missing or expired. Reopen the chapter to continue.",
+          retryable: true,
+        },
+      }),
+      contentType: "application/json",
+      status: 404,
+    });
+  };
+  await page.route(stalePageRequest, rejectStalePage);
+  await image.evaluate((element: HTMLImageElement) => {
+    element.src = `${element.src}&after-restart=1`;
+  });
+  await expect(
+    reader.getByText("The page could not be loaded. Your reader context was preserved."),
+  ).toBeVisible();
+  await page.unroute(stalePageRequest, rejectStalePage);
+  await reader.getByRole("button", { name: "Renew reader session" }).click();
+  await expect
+    .poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
+    .toEqual([800, 1200]);
+
   await expect(reader.getByRole("button", { name: "Previous page" })).toBeDisabled();
   await reader.getByRole("button", { name: "Next page" }).click();
   await expect(reader.getByText("Page 2 of 3", { exact: true })).toBeVisible();

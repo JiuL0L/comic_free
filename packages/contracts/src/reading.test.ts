@@ -2,11 +2,40 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  parseReadingSourcePluginResponse,
   parseCatalogSearchResponse,
   parseCreateReaderSessionRequest,
   parseLibraryItemsResponse,
   parseUpdateProgressRequest,
 } from "./index.ts";
+
+test("reading Source Plugin responses expose only stable Comic Free identity", () => {
+  assert.deepEqual(
+    parseReadingSourcePluginResponse({
+      sourcePlugin: {
+        key: "mihon:eu.kanade.tachiyomi.extension.all.mangadex:en",
+        name: "MangaDex (English)",
+      },
+    }),
+    {
+      sourcePlugin: {
+        key: "mihon:eu.kanade.tachiyomi.extension.all.mangadex:en",
+        name: "MangaDex (English)",
+      },
+    },
+  );
+  assert.throws(
+    () =>
+      parseReadingSourcePluginResponse({
+        sourcePlugin: {
+          graphqlUrl: "http://127.0.0.1:4568/api/graphql",
+          key: "plugin",
+          name: "Plugin",
+        },
+      }),
+    /unexpected field/i,
+  );
+});
 
 test("accepts normalized fixture catalog results with plugin-scoped durable keys", () => {
   const result = parseCatalogSearchResponse({

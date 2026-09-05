@@ -30,7 +30,7 @@ export interface ReadingAdapter {
   };
   getChapters: (comicKey: string) => Promise<ReadingChapter[]>;
   getDetails: (comicKey: string) => Promise<ComicDetailsResponse["comic"]>;
-  readPage: (pageKey: string) => Promise<ReadingPage>;
+  readPage: (pageKey: string, signal?: AbortSignal) => Promise<ReadingPage>;
   resolveChapter: (comicKey: string, chapterKey: string) => Promise<ResolvedChapter>;
   search: (query: string) => Promise<CatalogSearchItem[]>;
 }
@@ -39,7 +39,11 @@ type ReadingAdapterErrorCode =
   | SourceBindingReasonCode
   | "catalog_item_not_found"
   | "chapter_not_found"
-  | "page_not_found";
+  | "invalid_page_type"
+  | "page_not_found"
+  | "page_timeout"
+  | "page_too_large"
+  | "unsafe_page_reference";
 
 export class ReadingAdapterError extends Error {
   constructor(

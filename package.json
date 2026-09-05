@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "verify:source-plugin-changes": "tsx scripts/verify-source-plugin-changes.ts",
     "verify:suwayomi": "tsx scripts/verify-suwayomi-lifecycle.ts",
+    "verify:suwayomi-reading": "tsx scripts/verify-suwayomi-reading.ts",
     "verify": "pnpm typecheck && pnpm build && pnpm test:unit && pnpm test:e2e"
   },
   "devDependencies": {

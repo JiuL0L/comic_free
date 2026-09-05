@@ -2,7 +2,8 @@
 
 Comic Free is a local, personal comic reader. The formal application provides a
 loopback-only Browser WebUI and Local Core, retained Source Plugin catalog and reading
-state, safe Suwayomi lifecycle management, and explicitly approved Source Plugin changes.
+state, safe Suwayomi lifecycle management, explicitly approved Source Plugin changes,
+and an optional Suwayomi reading adapter.
 
 ## Start the application
 
@@ -33,6 +34,10 @@ local JAR path and the SHA-256 that was explicitly approved for that artifact:
 ```powershell
 $env:COMIC_FREE_SUWAYOMI_JAR = 'C:\path\to\Suwayomi-Server.jar'
 $env:COMIC_FREE_SUWAYOMI_APPROVED_SHA256 = '<64-character approved digest>'
+$env:COMIC_FREE_SUWAYOMI_SOURCE_ID = '<current Suwayomi source id>'
+$env:COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY = '<stable plugin-scoped key>'
+$env:COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_NAME = '<display name>'
+$env:COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY = '<stable provider key>'
 pnpm dev
 ```
 
@@ -42,6 +47,11 @@ available loopback-only internal port (`4568` by default, configurable with
 the Git-ignored `.local-data/suwayomi/managed/` directory. The Browser WebUI reads a
 normalized Local Core status route and never receives the GraphQL schema or shutdown
 credential.
+
+When all four Source Plugin variables are present, the reading UI uses the Suwayomi
+adapter instead of the deterministic fixture. Comic Free derives durable comic and
+chapter keys from provider-owned URLs, resolves current Suwayomi database identifiers
+when reading starts, and gives the browser only short-lived Local Core page URLs.
 
 After approving a particular local JAR, run the separate lifecycle proof:
 
@@ -53,6 +63,18 @@ This opt-in check starts the same artifact twice against one isolated data direc
 queries database-backed GraphQL state after each start, requests application-level JVM
 shutdown, verifies that H2 lock files are gone, and confirms a clean reopen. An abrupt
 termination is reported as `shutdown_failed` and does not pass this check.
+
+With the approved runtime already running through `pnpm dev`, a second terminal can
+run the opt-in reading check. Choose a search term appropriate for the installed Source
+Plugin; the check does not install, update, start, or stop third-party code.
+
+```powershell
+$env:COMIC_FREE_SUWAYOMI_READING_QUERY = '<live search term>'
+pnpm verify:suwayomi-reading
+```
+
+This reports the observed Source Plugin, comic, chapter, page count, image content type,
+byte count, and SHA-256 without printing upstream page URLs or GraphQL payloads.
 
 ## Manage an approved Source Plugin
 
@@ -67,8 +89,8 @@ Provider names after reload without rebuilding the WebUI. Disable is a Comic Fre
 state change: the approved package remains installed in Suwayomi and no uninstall mutation
 is sent. Disabling makes matching Source Bindings unavailable; updating or restoring marks
 them `refresh_required`. Library Items, Last Known Snapshots, and Reading Progress remain
-unchanged. Catalog refresh failure remains a separate retained observation. Provider search
-and reading through Suwayomi remain ticket 05; this screen owns management and discovery.
+unchanged. Catalog refresh failure remains a separate retained observation. This screen
+owns management and discovery; the configured reading adapter handles provider reading.
 
 After approving one exact extension operation, the opt-in restart check requires all of
 the following values and refuses to run when any value or the approval flag is absent:
@@ -95,7 +117,7 @@ that the installed Source Plugin survived the restart.
 pnpm verify
 ```
 
-The verification command type-checks and builds the workspace, tests the shared
-health contract and startup failure paths, then uses the installed Chrome to exercise
-the Browser WebUI startup, ready, failed, and retry states. It also verifies that
+The verification command type-checks and builds the workspace, runs contract, SQLite,
+process, fixture-Suwayomi, and REST tests, then uses Chrome to exercise startup, catalog,
+reading, retention, failure, restart, and reader-session renewal. It also verifies that
 ordinary shutdown releases ports `3210` and `5173`.

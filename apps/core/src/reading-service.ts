@@ -91,6 +91,15 @@ export class ReadingService {
     return this.#adapter.search(query);
   }
 
+  getSourcePlugin(): { sourcePlugin: { key: string; name: string } } {
+    return {
+      sourcePlugin: {
+        key: this.#adapter.sourcePlugin.key,
+        name: this.#adapter.sourcePlugin.name,
+      },
+    };
+  }
+
   async getDetails(sourcePluginKey: string, comicKey: string) {
     this.#requirePlugin(sourcePluginKey);
     return this.#adapter.getDetails(comicKey);
@@ -277,11 +286,19 @@ export function normalizeReadingError(error: unknown): ReadingServiceError {
       "chapter_not_found",
       "page_not_found",
     ].includes(error.code);
+    const upstreamStatus =
+      error.code === "page_timeout"
+        ? 504
+        : ["invalid_page_type", "page_too_large", "unsafe_page_reference"].includes(
+              error.code,
+            )
+          ? 502
+          : 503;
     return new ReadingServiceError(
       error.code,
       error.message,
       error.retryable,
-      notFound ? 404 : 503,
+      notFound ? 404 : upstreamStatus,
     );
   }
   return new ReadingServiceError(
