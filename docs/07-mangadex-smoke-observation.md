@@ -51,10 +51,13 @@ mechanism was not established by this run.
   this task data root. `stopChild` in `scripts/dev-supervisor.ts` uses `child.kill()`;
   the Local Core shutdown handler was not successfully exercised on this Windows run.
   No H2 lock file was observed, which does not prove database-safe shutdown.
-  A proposed temporary Java Attach agent calling `System.exit(0)` was rejected by
-  automatic approval review as an unapproved termination method. It was not executed.
-  The task JVM remains running pending explicit cleanup authorization. No second
-  live reading restart was attempted.
+  The initial Java Attach cleanup proposal was rejected before execution. After the
+  user explicitly approved that exact method, PID 31856 and its task-root ownership
+  were revalidated, and a temporary local agent invoked `System.exit(0)` (Attach exit
+  0). At 2026-09-05T10:51:46Z the JVM no longer existed, all three ports could be
+  rebound, and no H2 lock file remained. This completed cleanup but does not repair
+  the formal supervisor shutdown path or prove database reopen. No second live
+  reading restart was attempted.
 
 ## Deterministic acceptance and retained logs
 
@@ -68,6 +71,7 @@ Full task logs remain under the worktree's Git-ignored
 - `deterministic.log`: complete verification output.
 - `live-process.log`: formal supervisor startup/shutdown output.
 - `live-evidence.json`: timestamped host/extension/source responses and SQLite counts.
+- `attach-cleanup.log`, `cleanup-verification.txt`, `cleanup-result.json`: approved cleanup command output, successful port probes and timestamped process/lock checks.
 - `shutdown.txt`: successful probes for 3210/5173; 4568 probe failed with EADDRINUSE (recorded separately in `shutdown-failure.txt`).
 
 Evidence contains no image bodies, credentials, cookies or upstream page URLs.
