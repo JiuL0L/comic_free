@@ -223,10 +223,10 @@ test("shows pending, successful, failed, and restart-required plugin changes", a
   await page.getByRole("button", { name: "Apply approved change" }).click();
   await expect(page.getByText("Applying approved change…")).toBeVisible();
   await expect(page.getByText("Comic Free Fixture Reader was installed.")).toBeVisible();
-  await expect(page.getByText("Fixture Provider", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
 
   await page.reload();
-  await expect(page.getByText("Fixture Provider", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
   await page.getByLabel("Extension store URL").fill(
     "https://fixtures.comic-free.invalid/repo/index.pb",
   );

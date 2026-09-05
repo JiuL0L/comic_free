@@ -129,7 +129,7 @@ test("translates all approved Source Plugin changes through Suwayomi GraphQL", a
       request("install", "1.4.212"),
       AbortSignal.timeout(1_000),
     );
-    assert.equal(installed.providers[0]?.key, "2499283573021220255");
+    assert.equal(installed.providers[0]?.key, "provider:v1:MangaDex:en");
     await adapter.change(request("update", "1.4.212"), AbortSignal.timeout(1_000));
     const requestsBeforeDisable = requestCount;
     const disabled = await adapter.change(

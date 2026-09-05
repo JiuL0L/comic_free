@@ -2,6 +2,7 @@ import { LOCAL_CORE_ORIGIN } from "./index.ts";
 
 export const CATALOG_SEARCH_PATH = "/api/v1/catalog/search" as const;
 export const LIBRARY_ITEMS_PATH = "/api/v1/library-items" as const;
+export const READING_PROVIDERS_PATH = "/api/v1/reading/providers" as const;
 export const READING_SOURCE_PLUGIN_PATH = "/api/v1/reading/source-plugin" as const;
 export const READER_SESSIONS_PATH = "/api/v1/reader-sessions" as const;
 
@@ -53,6 +54,26 @@ export interface ReadingSourcePluginResponse {
     key: string;
     name: string;
   };
+}
+
+export interface ReadingProvider {
+  available: boolean;
+  comicProviderKey: string;
+  language: string;
+  name: string;
+  sourcePluginKey: string;
+  sourcePluginName: string;
+}
+
+export interface ReadingProvidersResponse {
+  items: ReadingProvider[];
+  message: string | null;
+  state: "success" | "empty" | "error";
+}
+
+export interface ReadingProviderSelection {
+  comicProviderKey?: string;
+  sourcePluginKey: string;
 }
 
 export interface ComicDetailsResponse {
@@ -233,6 +254,64 @@ export function parseReadingSourcePluginResponse(
       key: string(sourcePlugin.key, "sourcePlugin.key"),
       name: string(sourcePlugin.name, "sourcePlugin.name"),
     },
+  };
+}
+
+function readingProvider(value: unknown, context: string): ReadingProvider {
+  const provider = record(value, context);
+  exactFields(
+    provider,
+    [
+      "available",
+      "comicProviderKey",
+      "language",
+      "name",
+      "sourcePluginKey",
+      "sourcePluginName",
+    ],
+    context,
+  );
+  if (typeof provider.available !== "boolean") {
+    throw new TypeError(`Invalid ${context}.available: expected a boolean.`);
+  }
+  return {
+    available: provider.available,
+    comicProviderKey: string(provider.comicProviderKey, `${context}.comicProviderKey`),
+    language: string(provider.language, `${context}.language`),
+    name: string(provider.name, `${context}.name`),
+    sourcePluginKey: string(provider.sourcePluginKey, `${context}.sourcePluginKey`),
+    sourcePluginName: string(provider.sourcePluginName, `${context}.sourcePluginName`),
+  };
+}
+
+export function parseReadingProvidersResponse(value: unknown): ReadingProvidersResponse {
+  const response = record(value, "reading providers response");
+  exactFields(response, ["items", "message", "state"], "reading providers response");
+  if (!Array.isArray(response.items)) {
+    throw new TypeError("Invalid items: expected an array.");
+  }
+  if (response.message !== null && (typeof response.message !== "string" || response.message.trim() === "")) {
+    throw new TypeError("Invalid message: expected a non-empty string or null.");
+  }
+  return {
+    items: response.items.map((item, index) => readingProvider(item, `items[${index}]`)),
+    message: response.message,
+    state: enumValue(response.state, "state", ["success", "empty", "error"] as const),
+  };
+}
+
+export function parseReadingProviderSelection(value: unknown): ReadingProviderSelection {
+  const selection = record(value, "reading provider selection");
+  exactFields(
+    selection,
+    ["comicProviderKey", "sourcePluginKey"],
+    "reading provider selection",
+  );
+  return {
+    ...(selection.comicProviderKey === undefined
+      ? {}
+      : { comicProviderKey: string(selection.comicProviderKey, "comicProviderKey") }),
+    sourcePluginKey: string(selection.sourcePluginKey, "sourcePluginKey"),
   };
 }
 
@@ -509,8 +588,15 @@ export function parseApiErrorResponse(value: unknown): ApiErrorResponse {
   };
 }
 
-export function catalogSearchUrl(sourcePluginKey: string, query: string): string {
+export function catalogSearchUrl(
+  sourcePluginKey: string,
+  query: string,
+  comicProviderKey?: string,
+): string {
   const url = new URL(`${LOCAL_CORE_ORIGIN}${CATALOG_SEARCH_PATH}`);
+  if (comicProviderKey !== undefined) {
+    url.searchParams.set("comicProviderKey", comicProviderKey);
+  }
   url.searchParams.set("sourcePluginKey", sourcePluginKey);
   url.searchParams.set("q", query);
   return url.href;

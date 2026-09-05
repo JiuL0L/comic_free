@@ -89,7 +89,7 @@ test.afterAll(async () => {
 
 test("confirms deletion, preserves on failure, retries and prevents stale reading writes", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Source Plugin", { exact: true }).selectOption("fixture:reader");
+  await page.getByLabel("Comic Provider", { exact: true }).selectOption("fixture:reader");
   await page.getByLabel("Search query").fill("adventure");
   await page.getByRole("button", { name: "Search catalog" }).click();
   await page.getByRole("button", { name: "Open details" }).click();

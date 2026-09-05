@@ -34,10 +34,6 @@ local JAR path and the SHA-256 that was explicitly approved for that artifact:
 ```powershell
 $env:COMIC_FREE_SUWAYOMI_JAR = 'C:\path\to\Suwayomi-Server.jar'
 $env:COMIC_FREE_SUWAYOMI_APPROVED_SHA256 = '<64-character approved digest>'
-$env:COMIC_FREE_SUWAYOMI_SOURCE_ID = '<current Suwayomi source id>'
-$env:COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY = '<stable plugin-scoped key>'
-$env:COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_NAME = '<display name>'
-$env:COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY = '<stable provider key>'
 pnpm dev
 ```
 
@@ -69,6 +65,9 @@ run the opt-in reading check. Choose a search term appropriate for the installed
 Plugin; the check does not install, update, start, or stop third-party code.
 
 ```powershell
+# Select one approved entry from GET /api/v1/reading/providers for this smoke check.
+$env:COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY = '<installed package name>'
+$env:COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY = '<stable Provider key from the list>'
 $env:COMIC_FREE_SUWAYOMI_READING_QUERY = '<live search term>'
 pnpm verify:suwayomi-reading
 ```
@@ -85,7 +84,7 @@ disabled until the user checks the source-specific approval box. The Browser Web
 calls Suwayomi directly.
 
 Successful changes update the retained catalog immediately and expose normalized Comic
-Provider names after reload without rebuilding the WebUI. Disable is a Comic Free-local
+Providers in the reading selector automatically (or through Refresh providers) without rebuilding the WebUI. Select the Source Plugin, Provider name and language before searching. Disable is a Comic Free-local
 state change: the approved package remains installed in Suwayomi and no uninstall mutation
 is sent. Disabling makes matching Source Bindings unavailable; updating or restoring marks
 them `refresh_required`. Library Items, Last Known Snapshots, and Reading Progress remain
@@ -121,3 +120,19 @@ The verification command type-checks and builds the workspace, runs contract, SQ
 process, fixture-Suwayomi, and REST tests, then uses Chrome to exercise startup, catalog,
 reading, retention, failure, restart, and reader-session renewal. It also verifies that
 ordinary shutdown releases ports `3210` and `5173`.
+
+## Installed Comic Providers
+
+With an approved Host configured, install or restore a specifically approved extension
+in Source Plugins, then select its Provider in Find a comic. The application discovers
+current Host source IDs itself; the old SOURCE_ID / SOURCE_PLUGIN_NAME reading settings
+are no longer needed. A configured but unavailable Host never falls back to fixture reading.
+The list retains Last Known Catalog entries on observation failure and provides retry.
+Disabled or unobserved Providers cannot read. After a failure, use Refresh Source Binding
+before resuming a saved Library Item; snapshots and progress are retained.
+
+Provider identity is scoped by installed package plus exact Provider name and language.
+Current numeric source/manga/chapter IDs stay in memory. Ambiguous duplicate identities
+are rejected. A Provider rename or an older manually assigned binding identity is not
+silently remapped: the saved item remains retained and unresolved until its original
+identity is available again.

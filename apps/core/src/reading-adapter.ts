@@ -98,7 +98,12 @@ const PAGES: Readonly<Record<(typeof PAGE_KEYS)[number], Buffer>> = Object.freez
 
 export class FixtureReadingAdapter implements ReadingAdapter {
   readonly sourcePlugin = FIXTURE_SOURCE_PLUGIN;
-  readonly comicProviderKey = "fixture.provider";
+  readonly comicProviderKey: string;
+  readonly #comic: ComicDetailsResponse["comic"];
+  constructor(provider = {key: "fixture.provider", name: "Fixture Provider", language: "en"}) {
+    this.comicProviderKey = provider.key;
+    this.#comic = {...COMIC, comicProviderKey: provider.key, title: provider.key === "fixture.provider" ? COMIC.title : `${COMIC.title} · ${provider.language}`};
+  }
 
   async search(query: string): Promise<CatalogSearchItem[]> {
     const normalized = query.trim().toLowerCase();
@@ -118,24 +123,24 @@ export class FixtureReadingAdapter implements ReadingAdapter {
     }
     return [
       {
-        comicKey: COMIC.comicKey,
-        coverRef: COMIC.coverRef,
-        sourcePluginKey: COMIC.sourcePluginKey,
-        sourcePluginName: COMIC.sourcePluginName,
-        title: COMIC.title,
+        comicKey: this.#comic.comicKey,
+        coverRef: this.#comic.coverRef,
+        sourcePluginKey: this.#comic.sourcePluginKey,
+        sourcePluginName: this.#comic.sourcePluginName,
+        title: this.#comic.title,
       },
     ];
   }
 
   async getDetails(comicKey: string): Promise<ComicDetailsResponse["comic"]> {
-    if (comicKey !== COMIC.comicKey) {
+    if (comicKey !== this.#comic.comicKey) {
       throw new ReadingAdapterError(
         "catalog_item_not_found",
         "The requested catalog comic does not exist.",
         false,
       );
     }
-    return { ...COMIC };
+    return { ...this.#comic };
   }
 
   async getChapters(comicKey: string): Promise<ReadingChapter[]> {
@@ -169,7 +174,7 @@ export class FixtureReadingAdapter implements ReadingAdapter {
       );
     }
     return {
-      bytes: Buffer.from(bytes),
+      bytes: this.comicProviderKey === "fixture.provider" ? Buffer.from(bytes) : Buffer.from(bytes.toString("utf8").replace("COMIC FREE FIXTURE", "COMIC FREE FR FIXTURE"), "utf8"),
       contentType: "image/svg+xml; charset=utf-8",
     };
   }

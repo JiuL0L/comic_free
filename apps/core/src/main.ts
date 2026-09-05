@@ -6,29 +6,18 @@ import {
   type PluginHostStatusResponse,
 } from "@comic-free/contracts";
 
-import { FixtureCatalogAdapter } from "./catalog-adapter.ts";
+import { createReadingRuntime } from "./reading-runtime.ts";
 import { CatalogStore } from "./catalog-store.ts";
 import type { PluginHostManager } from "./plugin-host-manager.ts";
-import {
-  FixtureReadingAdapter,
-  type ReadingAdapter,
-} from "./reading-adapter.ts";
-import { ReadingService } from "./reading-service.ts";
 import { ReadingStore } from "./reading-store.ts";
 import { createLocalCoreServer } from "./server.ts";
-import {
-  FixtureSourcePluginChangeAdapter,
-  SourcePluginChangeService,
-} from "./source-plugin-change.ts";
 import { createSuwayomiPluginHost } from "./suwayomi-plugin-host.ts";
-import { SuwayomiReadingAdapter } from "./suwayomi-reading-adapter.ts";
-import { SuwayomiSourcePluginChangeAdapter } from "./suwayomi-source-plugin-change.ts";
 
 const dataDirectory = path.resolve(process.env.COMIC_FREE_DATA_DIR ?? ".local-data");
 const databasePath = path.join(dataDirectory, "comic-free.sqlite");
 const catalogStore = new CatalogStore(databasePath);
 const readingStore = new ReadingStore(databasePath);
-const adapter = new FixtureCatalogAdapter(process.env.COMIC_FREE_CATALOG_FIXTURE);
+
 const configuredJarPath = process.env.COMIC_FREE_SUWAYOMI_JAR?.trim();
 const approvedSha256 = process.env.COMIC_FREE_SUWAYOMI_APPROVED_SHA256?.trim();
 const suwayomiProxyUrl = process.env.COMIC_FREE_SUWAYOMI_PROXY?.trim();
@@ -55,23 +44,12 @@ if (configuredJarPath && approvedSha256) {
   }
 }
 
-const readingService = new ReadingService(createReadingAdapter(), readingStore, catalogStore);
 const pluginHostStatus = () => pluginHost?.status() ?? pluginHostFallback;
-const sourcePluginChangeAdapter = pluginHost
-  ? new SuwayomiSourcePluginChangeAdapter(pluginHostStatus)
-  : new FixtureSourcePluginChangeAdapter({
-      delayMs: 250,
-      restartRequiredActions: ["update"],
-    });
-const sourcePluginChangeService = new SourcePluginChangeService(
-  sourcePluginChangeAdapter,
-  catalogStore,
-  {
-    invalidateSourcePlugin: (pluginKey) => {
-      readingService.invalidateSourcePlugin(pluginKey);
-    },
-  },
-);
+const {adapter, readingService, sourcePluginChangeService} = createReadingRuntime({
+  catalogStore, readingStore,
+  ...(configuredJarPath || approvedSha256 ? {pluginHostStatus} : {}),
+  ...(process.env.COMIC_FREE_CATALOG_FIXTURE ? {catalogFixture: process.env.COMIC_FREE_CATALOG_FIXTURE} : {}),
+});
 
 const server = createLocalCoreServer({
   adapter,
@@ -161,39 +139,6 @@ function safeErrorMessage(error: unknown, fallback: string): string {
     /\b((?:proxy-)?authorization|cookie|set-cookie|x-api-key|api[-_]?key|access[-_]?token|refresh[-_]?token|password|credential|secret|session)\s*[:=]\s*.*$/gi,
     "$1: [REDACTED]",
   );
-}
-
-function createReadingAdapter(): ReadingAdapter {
-  const sourceConfiguration = {
-    comicProviderKey: process.env.COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY?.trim(),
-    sourceId: process.env.COMIC_FREE_SUWAYOMI_SOURCE_ID?.trim(),
-    sourcePluginKey: process.env.COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY?.trim(),
-    sourcePluginName: process.env.COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_NAME?.trim(),
-  };
-  const configuredValues = Object.values(sourceConfiguration).filter(Boolean);
-  if (configuredValues.length === 0) return new FixtureReadingAdapter();
-  if (
-    configuredValues.length !== Object.keys(sourceConfiguration).length ||
-    !configuredJarPath ||
-    !approvedSha256 ||
-    !pluginHost
-  ) {
-    throw new Error(
-      "Suwayomi reading requires the approved JAR settings plus source id, Source Plugin key/name, and Comic Provider key.",
-    );
-  }
-  return new SuwayomiReadingAdapter({
-    comicProviderKey: sourceConfiguration.comicProviderKey as string,
-    sourceId: sourceConfiguration.sourceId as string,
-    sourcePluginKey: sourceConfiguration.sourcePluginKey as string,
-    sourcePluginName: sourceConfiguration.sourcePluginName as string,
-    suwayomiOrigin: () => {
-      const status = pluginHost?.status();
-      return status?.state === "ready" && status.internalPort
-        ? `http://127.0.0.1:${status.internalPort}`
-        : null;
-    },
-  });
 }
 
 function writeLocalCoreFailure(event: string, error: unknown): void {

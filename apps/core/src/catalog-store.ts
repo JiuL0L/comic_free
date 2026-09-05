@@ -14,6 +14,13 @@ import {
   type SourcePluginStatus,
 } from "@comic-free/contracts";
 
+// Absence in a Host observation is not evidence that a known Provider was removed.
+export function retainKnownProviders(previous: NormalizedComicProvider[], observed: NormalizedComicProvider[]): NormalizedComicProvider[] {
+  const providers = new Map(previous.map(provider => [provider.key, provider]));
+  for (const provider of observed) providers.set(provider.key, provider);
+  return [...providers.values()];
+}
+
 type ObservedStatus = Exclude<SourcePluginStatus, "confirmed_removed">;
 
 export interface SourcePluginObservation {
@@ -263,11 +270,10 @@ export class CatalogStore {
             : existing?.bindings_refresh_required === 1 || recovered
               ? 1
               : 0;
-        const providers =
-          observation.providers ??
-          (existing
-            ? (JSON.parse(existing.providers_json) as NormalizedComicProvider[])
-            : []);
+        const providers = retainKnownProviders(
+          existing ? JSON.parse(existing.providers_json) as NormalizedComicProvider[] : [],
+          observation.providers ?? [],
+        );
 
         // reportedObsolete is intentionally not translated into confirmed removal.
         void observation.reportedObsolete;
@@ -345,6 +351,7 @@ export class CatalogStore {
     action: SourcePluginChangeAction,
   ): void {
     this.#transaction(() => {
+      change = {...change, providers: retainKnownProviders(this.readCatalog().entries.find(entry => entry.pluginKey === change.pluginKey)?.providers ?? [], change.providers)};
       if (action === "disable") {
         const result = this.#database
           .prepare(`

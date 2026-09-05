@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  catalogSearchUrl,
   parseReadingSourcePluginResponse,
+  parseReadingProviderSelection,
+  parseReadingProvidersResponse,
   parseRefreshSourceBindingRequest,
   parseCatalogSearchResponse,
   parseCreateReaderSessionRequest,
@@ -11,6 +14,61 @@ import {
   parseLibraryItemsResponse,
   parseUpdateProgressRequest,
 } from "./index.ts";
+
+test("reading providers expose exact stable identities and availability", () => {
+  const response = parseReadingProvidersResponse({
+    items: [
+      {
+        available: true,
+        comicProviderKey: "mangadex:en",
+        language: "en",
+        name: "MangaDex",
+        sourcePluginKey: "mihon:mangadex",
+        sourcePluginName: "Mihon MangaDex",
+      },
+    ],
+    message: null,
+    state: "success",
+  });
+  assert.equal(response.items[0]?.comicProviderKey, "mangadex:en");
+  assert.equal(response.items[0]?.available, true);
+  assert.throws(
+    () => parseReadingProvidersResponse({ items: [], message: null, state: "success", upstreamUrl: "https://example.invalid" }),
+    /unexpected field/i,
+  );
+  assert.throws(
+    () => parseReadingProvidersResponse({ items: [{ available: "yes" }], message: null, state: "success" }),
+    /expected a boolean/i,
+  );
+});
+
+test("reading provider selections reject missing, blank, and unknown fields", () => {
+  assert.deepEqual(
+    parseReadingProviderSelection({
+      comicProviderKey: "mangadex:en",
+      sourcePluginKey: "mihon:mangadex",
+    }),
+    { comicProviderKey: "mangadex:en", sourcePluginKey: "mihon:mangadex" },
+  );
+  assert.deepEqual(parseReadingProviderSelection({ sourcePluginKey: "fixture:reader" }), {
+    sourcePluginKey: "fixture:reader",
+  });
+  for (const value of [
+    {},
+    { sourcePluginKey: "" },
+    { sourcePluginKey: "fixture:reader", comicProviderKey: "" },
+    { sourcePluginKey: "fixture:reader", upstreamUrl: "https://example.invalid" },
+  ]) {
+    assert.throws(() => parseReadingProviderSelection(value), TypeError);
+  }
+});
+
+test("catalog search URL includes the selected Comic Provider when present", () => {
+  const url = new URL(catalogSearchUrl("mihon:mangadex", "adventure", "mangadex:en"));
+  assert.equal(url.searchParams.get("sourcePluginKey"), "mihon:mangadex");
+  assert.equal(url.searchParams.get("comicProviderKey"), "mangadex:en");
+  assert.equal(new URL(catalogSearchUrl("fixture:reader", "adventure")).searchParams.has("comicProviderKey"), false);
+});
 
 test("reading Source Plugin responses expose only stable Comic Free identity", () => {
   assert.deepEqual(

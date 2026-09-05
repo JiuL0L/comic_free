@@ -4,7 +4,7 @@ import {
   CORE_HEALTH_URL,
   LOCAL_CORE_ORIGIN,
   READER_SESSIONS_PATH,
-  READING_SOURCE_PLUGIN_PATH,
+  READING_PROVIDERS_PATH,
   catalogSearchUrl,
   comicChaptersUrl,
   comicDetailsUrl,
@@ -14,7 +14,7 @@ import {
   parseComicDetailsResponse,
   parseHealthResponse,
   parseReaderSessionResponse,
-  parseReadingSourcePluginResponse,
+  parseReadingProvidersResponse,
 } from "@comic-free/contracts";
 
 const query = process.env.COMIC_FREE_SUWAYOMI_READING_QUERY?.trim();
@@ -39,23 +39,23 @@ async function json(url: string, init?: RequestInit): Promise<unknown> {
 }
 
 parseHealthResponse(await json(CORE_HEALTH_URL));
-const source = parseReadingSourcePluginResponse(
-  await json(`${LOCAL_CORE_ORIGIN}${READING_SOURCE_PLUGIN_PATH}`),
-).sourcePlugin;
-if (source.key === "fixture:reader") {
-  throw new Error(
-    "The Local Core is using the deterministic fixture. Configure the approved Suwayomi reading variables and restart pnpm dev.",
-  );
-}
+const providers = parseReadingProvidersResponse(
+  await json(`${LOCAL_CORE_ORIGIN}${READING_PROVIDERS_PATH}`),
+);
+const pluginKey = process.env.COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY?.trim();
+const providerKey = process.env.COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY?.trim();
+const choices = providers.items.filter(provider => provider.available && provider.sourcePluginKey !== "fixture:reader" && (!pluginKey || provider.sourcePluginKey === pluginKey) && (!providerKey || provider.comicProviderKey === providerKey));
+if (providers.state === "error" || choices.length !== 1) throw new Error("Select exactly one approved installed Comic Provider using COMIC_FREE_SUWAYOMI_SOURCE_PLUGIN_KEY and COMIC_FREE_SUWAYOMI_COMIC_PROVIDER_KEY from the reading providers list. These select this smoke check only; the application discovers its own routes.");
+const source = choices[0]!;
 
 const result = parseCatalogSearchResponse(
-  await json(catalogSearchUrl(source.key, query)),
+  await json(catalogSearchUrl(source.sourcePluginKey, query, source.comicProviderKey)),
 ).items[0];
 if (!result) throw new Error("The configured Source Plugin returned no search result.");
 
 const [details, chapters] = await Promise.all([
-  json(comicDetailsUrl(source.key, result.comicKey)).then(parseComicDetailsResponse),
-  json(comicChaptersUrl(source.key, result.comicKey)).then(parseCatalogChaptersResponse),
+  json(comicDetailsUrl(source.sourcePluginKey, result.comicKey)).then(parseComicDetailsResponse),
+  json(comicChaptersUrl(source.sourcePluginKey, result.comicKey)).then(parseCatalogChaptersResponse),
 ]);
 const chapter = chapters.items[0];
 if (!chapter) throw new Error("The selected comic returned no chapters.");
@@ -65,7 +65,7 @@ const session = parseReaderSessionResponse(
     body: JSON.stringify({
       chapterKey: chapter.chapterKey,
       comicKey: result.comicKey,
-      sourcePluginKey: source.key,
+      sourcePluginKey: source.sourcePluginKey,
     }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
