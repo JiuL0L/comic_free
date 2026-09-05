@@ -173,6 +173,11 @@ select:focus-visible {
   background: #f2dfdc;
 }
 
+.availability.refresh_required {
+  color: #745f20;
+  background: #f4ebc8;
+}
+
 @media (max-width: 48rem) {
   .search-controls,
   .reader-actions {

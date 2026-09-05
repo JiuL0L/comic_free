@@ -69,7 +69,15 @@ export class ReadingService {
   }
 
   #requireAvailableBinding(item: LibraryItem | null): void {
-    if (item?.sourceBinding.availability !== "unavailable") return;
+    if (!item || item.sourceBinding.availability === "available") return;
+    if (item.sourceBinding.availability === "refresh_required") {
+      throw new ReadingServiceError(
+        "source_binding_refresh_required",
+        "Reading is unavailable until this restored Source Binding is explicitly refreshed.",
+        true,
+        409,
+      );
+    }
     throw new ReadingServiceError(
       "source_binding_unavailable",
       `Reading is unavailable because the Source Binding is ${item.sourceBinding.reasonCode ?? "unknown"}.`,
@@ -191,6 +199,17 @@ export class ReadingService {
     return this.#adapter.readPage(pageKey);
   }
 
+  invalidateSourcePlugin(sourcePluginKey: string): number {
+    let invalidated = 0;
+    for (const [sessionId, session] of this.#sessions) {
+      if (session.sourcePluginKey === sourcePluginKey) {
+        this.#sessions.delete(sessionId);
+        invalidated += 1;
+      }
+    }
+    return invalidated;
+  }
+
   retain(input: RetainLibraryItemRequest): LibraryItem {
     const session = this.#sessions.get(input.sessionId);
     if (!session) {
@@ -245,14 +264,7 @@ export class ReadingService {
         404,
       );
     }
-    for (const [sessionId, session] of this.#sessions) {
-      if (
-        session.sourcePluginKey === item.sourceBinding.sourcePluginKey &&
-        session.comicKey === item.sourceBinding.durableComicKey
-      ) {
-        this.#sessions.delete(sessionId);
-      }
-    }
+    this.invalidateSourcePlugin(item.sourceBinding.sourcePluginKey);
     return item;
   }
 }

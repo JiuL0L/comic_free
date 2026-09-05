@@ -7,6 +7,7 @@ import {
   parseLibraryItemsResponse,
   parseUpdateProgressRequest,
   type LibraryItem,
+  type SourceBindingAvailability,
   type SourceBindingReasonCode,
   type UpdateProgressRequest,
 } from "@comic-free/contracts";
@@ -20,7 +21,7 @@ export interface RetainContext extends UpdateProgressRequest {
 }
 
 interface LibraryRow {
-  availability: "available" | "unavailable";
+  availability: SourceBindingAvailability;
   binding_id: string;
   binding_updated_at: string;
   chapter_key: string;
@@ -94,10 +95,9 @@ export class ReadingStore {
     const migrated = this.#database
       .prepare("SELECT 1 FROM schema_migrations WHERE version = 2")
       .get();
-    if (migrated) return;
-
-    this.#transaction(() => {
-      this.#database.exec(`
+    if (!migrated) {
+      this.#transaction(() => {
+        this.#database.exec(`
         CREATE TABLE IF NOT EXISTS library_items (
           id TEXT PRIMARY KEY,
           created_at TEXT NOT NULL
@@ -133,9 +133,49 @@ export class ReadingStore {
           updated_at TEXT NOT NULL,
           CHECK (page_index < page_count)
         );
+        `);
+        this.#database
+          .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)")
+          .run(this.#now());
+      });
+    }
+
+    const expandedAvailability = this.#database
+      .prepare("SELECT 1 FROM schema_migrations WHERE version = 3")
+      .get();
+    if (expandedAvailability) return;
+
+    this.#transaction(() => {
+      this.#database.exec(`
+        ALTER TABLE source_bindings RENAME TO source_bindings_v2;
+        CREATE TABLE source_bindings (
+          id TEXT PRIMARY KEY,
+          library_item_id TEXT NOT NULL UNIQUE REFERENCES library_items(id) ON DELETE CASCADE,
+          source_plugin_key TEXT NOT NULL,
+          comic_provider_key TEXT NOT NULL,
+          durable_comic_key TEXT NOT NULL,
+          availability TEXT NOT NULL CHECK (availability IN ('available', 'unavailable', 'refresh_required')),
+          reason_code TEXT,
+          observed_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE (source_plugin_key, comic_provider_key, durable_comic_key),
+          CHECK (
+            (availability = 'unavailable' AND reason_code IS NOT NULL) OR
+            (availability IN ('available', 'refresh_required') AND reason_code IS NULL)
+          )
+        );
+        INSERT INTO source_bindings (
+          id, library_item_id, source_plugin_key, comic_provider_key,
+          durable_comic_key, availability, reason_code, observed_at, updated_at
+        )
+        SELECT
+          id, library_item_id, source_plugin_key, comic_provider_key,
+          durable_comic_key, availability, reason_code, observed_at, updated_at
+        FROM source_bindings_v2;
+        DROP TABLE source_bindings_v2;
       `);
       this.#database
-        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)")
+        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)")
         .run(this.#now());
     });
   }
@@ -327,6 +367,38 @@ export class ReadingStore {
       .prepare("SELECT library_item_id FROM source_bindings WHERE id = ?")
       .get(sourceBindingId) as { library_item_id: string };
     return this.get(row.library_item_id);
+  }
+
+  markSourcePluginBindingsUnavailable(
+    sourcePluginKey: string,
+    reasonCode: SourceBindingReasonCode,
+  ): number {
+    requireText(sourcePluginKey, "sourcePluginKey");
+    const now = this.#now();
+    return Number(
+      this.#database
+        .prepare(`
+          UPDATE source_bindings
+          SET availability = 'unavailable', reason_code = ?, observed_at = ?, updated_at = ?
+          WHERE source_plugin_key = ?
+        `)
+        .run(reasonCode, now, now, sourcePluginKey).changes,
+    );
+  }
+
+  markSourcePluginBindingsRefreshRequired(sourcePluginKey: string): number {
+    requireText(sourcePluginKey, "sourcePluginKey");
+    const now = this.#now();
+    return Number(
+      this.#database
+        .prepare(`
+          UPDATE source_bindings
+          SET availability = 'refresh_required', reason_code = NULL,
+              observed_at = ?, updated_at = ?
+          WHERE source_plugin_key = ?
+        `)
+        .run(now, now, sourcePluginKey).changes,
+    );
   }
 
   delete(libraryItemId: string): boolean {

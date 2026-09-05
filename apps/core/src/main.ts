@@ -13,7 +13,12 @@ import { FixtureReadingAdapter } from "./reading-adapter.ts";
 import { ReadingService } from "./reading-service.ts";
 import { ReadingStore } from "./reading-store.ts";
 import { createLocalCoreServer } from "./server.ts";
+import {
+  FixtureSourcePluginChangeAdapter,
+  SourcePluginChangeService,
+} from "./source-plugin-change.ts";
 import { createSuwayomiPluginHost } from "./suwayomi-plugin-host.ts";
+import { SuwayomiSourcePluginChangeAdapter } from "./suwayomi-source-plugin-change.ts";
 
 const dataDirectory = path.resolve(process.env.COMIC_FREE_DATA_DIR ?? ".local-data");
 const databasePath = path.join(dataDirectory, "comic-free.sqlite");
@@ -23,6 +28,7 @@ const adapter = new FixtureCatalogAdapter(process.env.COMIC_FREE_CATALOG_FIXTURE
 const readingService = new ReadingService(new FixtureReadingAdapter(), readingStore);
 const configuredJarPath = process.env.COMIC_FREE_SUWAYOMI_JAR?.trim();
 const approvedSha256 = process.env.COMIC_FREE_SUWAYOMI_APPROVED_SHA256?.trim();
+const suwayomiProxyUrl = process.env.COMIC_FREE_SUWAYOMI_PROXY?.trim();
 let pluginHost: PluginHostManager | null = null;
 let pluginHostFallback = initialPluginHostStatus(configuredJarPath, approvedSha256);
 
@@ -33,6 +39,7 @@ if (configuredJarPath && approvedSha256) {
       dataRoot: path.join(dataDirectory, "suwayomi", "managed"),
       internalPort: Number.parseInt(process.env.COMIC_FREE_SUWAYOMI_PORT ?? "4568", 10),
       jarPath: configuredJarPath,
+      ...(suwayomiProxyUrl ? { proxyUrl: suwayomiProxyUrl } : {}),
     });
   } catch (error) {
     pluginHostFallback = {
@@ -45,11 +52,29 @@ if (configuredJarPath && approvedSha256) {
   }
 }
 
+const pluginHostStatus = () => pluginHost?.status() ?? pluginHostFallback;
+const sourcePluginChangeAdapter = pluginHost
+  ? new SuwayomiSourcePluginChangeAdapter(pluginHostStatus)
+  : new FixtureSourcePluginChangeAdapter({
+      delayMs: 250,
+      restartRequiredActions: ["update"],
+    });
+const sourcePluginChangeService = new SourcePluginChangeService(
+  sourcePluginChangeAdapter,
+  catalogStore,
+  {
+    invalidateSourcePlugin: (pluginKey) => {
+      readingService.invalidateSourcePlugin(pluginKey);
+    },
+  },
+);
+
 const server = createLocalCoreServer({
   adapter,
   catalogStore,
-  pluginHostStatus: () => pluginHost?.status() ?? pluginHostFallback,
+  pluginHostStatus,
   readingService,
+  sourcePluginChangeService,
 });
 
 server.on("error", (error: NodeJS.ErrnoException) => {

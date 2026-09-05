@@ -21,6 +21,10 @@ export const SOURCE_BINDING_REASON_CODES = [
 ] as const;
 
 export type SourceBindingReasonCode = (typeof SOURCE_BINDING_REASON_CODES)[number];
+export type SourceBindingAvailability =
+  | "available"
+  | "unavailable"
+  | "refresh_required";
 
 export interface ApiErrorResponse {
   error: {
@@ -102,7 +106,7 @@ export interface LibraryItem {
     updatedAt: string;
   };
   sourceBinding: {
-    availability: "available" | "unavailable";
+    availability: SourceBindingAvailability;
     comicProviderKey: string;
     durableComicKey: string;
     id: string;
@@ -362,7 +366,7 @@ function libraryItem(value: unknown, context: string): LibraryItem {
   const availability = enumValue(
     sourceBinding.availability,
     `${context}.sourceBinding.availability`,
-    ["available", "unavailable"] as const,
+    ["available", "unavailable", "refresh_required"] as const,
   );
   const reasonCode =
     sourceBinding.reasonCode === null
@@ -372,9 +376,9 @@ function libraryItem(value: unknown, context: string): LibraryItem {
           `${context}.sourceBinding.reasonCode`,
           SOURCE_BINDING_REASON_CODES,
         );
-  if ((availability === "available") !== (reasonCode === null)) {
+  if ((availability === "unavailable") === (reasonCode === null)) {
     throw new TypeError(
-      `Invalid ${context}.sourceBinding.reasonCode: available requires null and unavailable requires a reason.`,
+      `Invalid ${context}.sourceBinding.reasonCode: unavailable requires a reason; available and refresh_required require null.`,
     );
   }
   const parsedProgress = parseUpdateProgressRequest({

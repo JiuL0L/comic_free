@@ -10,6 +10,7 @@ export interface SuwayomiPluginHostOptions {
   dataRoot: string;
   internalPort: number;
   jarPath: string;
+  proxyUrl?: string;
   shutdownTimeoutMs?: number;
   startupTimeoutMs?: number;
 }
@@ -53,6 +54,7 @@ export async function createSuwayomiPluginHost(
       "-Dsuwayomi.tachidesk.config.server.initialOpenInBrowserEnabled=false",
       "-Dsuwayomi.tachidesk.config.server.systemTrayEnabled=false",
       "-Dsuwayomi.tachidesk.config.server.kcefEnabled=false",
+      ...suwayomiProxyArguments(options.proxyUrl),
       "-jar",
       path.resolve(options.jarPath),
     ],
@@ -66,6 +68,31 @@ export async function createSuwayomiPluginHost(
     shutdownUrl: `http://127.0.0.1:${shutdownPort}/comic-free/shutdown`,
     startupTimeoutMs: options.startupTimeoutMs ?? 180_000,
   });
+}
+
+export function suwayomiProxyArguments(proxyUrl?: string): string[] {
+  if (!proxyUrl) return [];
+  const proxy = new URL(proxyUrl);
+  if (proxy.username || proxy.password) {
+    throw new TypeError("Suwayomi proxy URL must not contain credentials.");
+  }
+  if (
+    proxy.protocol !== "http:" ||
+    proxy.pathname !== "/" ||
+    proxy.search ||
+    proxy.hash
+  ) {
+    throw new TypeError(
+      "Suwayomi proxy must be an HTTP proxy URL without a path, query, or fragment.",
+    );
+  }
+  const port = proxy.port || "80";
+  return [
+    `-Dhttp.proxyHost=${proxy.hostname}`,
+    `-Dhttp.proxyPort=${port}`,
+    `-Dhttps.proxyHost=${proxy.hostname}`,
+    `-Dhttps.proxyPort=${port}`,
+  ];
 }
 
 function assertPort(port: number, label: string): void {
