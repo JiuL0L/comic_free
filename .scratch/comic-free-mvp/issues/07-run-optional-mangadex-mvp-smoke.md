@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: Read through Suwayomi with transient reader sessions; 06: Manage trusted Source Plugin changes.
 
-**Status:** ready-for-agent
+**Status:** blocked — isolated extension registration; live reading unverified
 
 - [ ] Before the run, identify the exact existing or proposed Suwayomi and MangaDex artifacts and obtain explicit permission for any new download, update, or third-party execution.
 - [ ] The smoke check uses the formal Browser WebUI, Local Core REST/JSON boundary, Suwayomi adapter, and Local Core page proxy rather than a temporary diagnostic page.
@@ -14,3 +14,7 @@
 - [ ] The run confirms that no Suwayomi-local numeric manga/chapter identifier or upstream page URL was persisted as durable Comic Free identity.
 - [ ] Full logs are retained in a task-specific output location with secrets and image bodies excluded, and the final report separates deterministic local evidence from live observations.
 - [ ] The resulting verdict updates only project documentation on `main`; executable experiment artifacts, if any, remain outside `main` unless separately approved as formal implementation.
+
+## Observation — 2026-09-05
+
+Authorized attempt recorded in [the smoke observation](../../../docs/07-mangadex-smoke-observation.md). Deterministic verification passed (67 tests and 4 Chrome journeys); the isolated host registered no MangaDex extension, so real-page acceptance remains incomplete. The checkboxes above remain unchecked until the corresponding live evidence is obtained.
