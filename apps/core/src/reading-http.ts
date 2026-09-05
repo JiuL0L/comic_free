@@ -8,6 +8,7 @@ import {
   SOURCE_BINDING_REASON_CODES,
   parseCreateReaderSessionRequest,
   parseLibraryItemId,
+  parseRefreshSourceBindingRequest,
   parseRetainLibraryItemRequest,
   parseUpdateProgressRequest,
   type ApiErrorResponse,
@@ -150,14 +151,13 @@ export function createReadingHttpHandler(service: ReadingService) {
     const unavailableMatch = pathname.match(
       /^\/api\/v1\/fixture\/source-bindings\/([^/]+)\/unavailable$/,
     );
+    const refreshMatch = pathname.match(/^\/api\/v1\/source-bindings\/([^/]+)\/refresh$/);
     const known =
       pathname === CATALOG_SEARCH_PATH ||
       pathname === READING_SOURCE_PLUGIN_PATH ||
       pathname === READER_SESSIONS_PATH ||
       pathname === LIBRARY_ITEMS_PATH ||
-      Boolean(
-        detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || deleteMatch,
-      );
+      Boolean(detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || refreshMatch || deleteMatch);
     if (!known) return false;
 
     try {
@@ -285,6 +285,16 @@ export function createReadingHttpHandler(service: ReadingService) {
             input,
           ),
         });
+        return true;
+      }
+
+      if (refreshMatch) {
+        if (request.method !== "POST") {
+          methodNotAllowed(response, "POST");
+          return true;
+        }
+        parseRefreshSourceBindingRequest(await readJson(request));
+        writeJson(response, 200, { item: await service.refreshBinding(decodeURIComponent(refreshMatch[1] as string)) });
         return true;
       }
 

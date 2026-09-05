@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   parseReadingSourcePluginResponse,
+  parseRefreshSourceBindingRequest,
   parseCatalogSearchResponse,
   parseCreateReaderSessionRequest,
   parseDeleteLibraryItemResponse,
@@ -136,4 +137,11 @@ test("library responses retain snapshot, binding reason, and readable progress",
 
   assert.equal(response.items[0]?.sourceBinding.availability, "unavailable");
   assert.equal(response.items[0]?.progress.pageIndex, 1);
+});
+
+test("binding refresh accepts only an explicit empty request", () => {
+  assert.deepEqual(parseRefreshSourceBindingRequest({}), {});
+  for (const value of [null, [], "", { comicKey: "replacement" }, { pageIndex: 0 }, { upstreamUrl: "https://example.invalid" }]) {
+    assert.throws(() => parseRefreshSourceBindingRequest(value), TypeError);
+  }
 });

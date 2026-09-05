@@ -18,6 +18,7 @@ import {
   parseReaderSessionResponse,
   parseReadingSourcePluginResponse,
   readerPageUrl,
+  sourceBindingRefreshUrl,
   type CatalogChaptersResponse,
   type CatalogSearchItem,
   type ComicDetailsResponse,
@@ -85,6 +86,12 @@ type LibraryState =
   | { error: string; kind: "failed" }
   | { items: LibraryItem[]; kind: "loaded" };
 
+type ActionState =
+  | { kind: "idle" }
+  | { kind: "pending" }
+  | { kind: "success" }
+  | { error: string; kind: "failed" };
+
 const reasonLabels: Record<string, string> = {
   comic_provider_unreachable: "Comic Provider unreachable",
   disabled: "Source Plugin disabled",
@@ -117,6 +124,8 @@ export function ReadingExperience() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [libraryAttempt, setLibraryAttempt] = useState(0);
   const [library, setLibrary] = useState<LibraryState>({ kind: "loading" });
+  const [resumeStates, setResumeStates] = useState<Record<string, ActionState>>({});
+  const [refreshStates, setRefreshStates] = useState<Record<string, ActionState>>({});
 
   const [deleteTarget, setDeleteTarget] = useState<LibraryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -291,6 +300,7 @@ export function ReadingExperience() {
 
   const resume = async (item: LibraryItem) => {
     const generation = readingGeneration.current;
+    setResumeStates((states) => ({ ...states, [item.id]: { kind: "pending" } }));
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
@@ -300,9 +310,58 @@ export function ReadingExperience() {
       if (generation !== readingGeneration.current) return;
       acceptSession(response.session);
       setRetainedId(item.id);
+      setResumeStates((states) => ({ ...states, [item.id]: { kind: "success" } }));
     } catch (error) {
       if (generation !== readingGeneration.current) return;
-      setSaveMessage(error instanceof Error ? error.message : "Reading could not resume.");
+      setResumeStates((states) => ({
+        ...states,
+        [item.id]: {
+          kind: "failed",
+          error: error instanceof Error ? error.message : "Reading could not resume.",
+        },
+      }));
+      setLibraryAttempt((value) => value + 1);
+    }
+  };
+
+  const refreshSourceBinding = async (item: LibraryItem) => {
+    const generation = readingGeneration.current;
+    const bindingId = item.sourceBinding.id;
+    setRefreshStates((states) => ({ ...states, [bindingId]: { kind: "pending" } }));
+    try {
+      const response = await requestJson(
+        sourceBindingRefreshUrl(bindingId),
+        json("POST", {}),
+        parseLibraryItemResponse,
+      );
+      if (generation !== readingGeneration.current) return;
+      setLibrary((current) =>
+        current.kind === "loaded"
+          ? {
+              kind: "loaded",
+              items: current.items.map((candidate) =>
+                candidate.id === response.item.id ? response.item : candidate,
+              ),
+            }
+          : current,
+      );
+      setRefreshStates((states) => ({ ...states, [bindingId]: { kind: "success" } }));
+      setResumeStates((states) => {
+        const nextStates = { ...states };
+        delete nextStates[item.id];
+        return nextStates;
+      });
+      setLibraryAttempt((value) => value + 1);
+    } catch (error) {
+      if (generation !== readingGeneration.current) return;
+      setRefreshStates((states) => ({
+        ...states,
+        [bindingId]: {
+          kind: "failed",
+          error: error instanceof Error ? error.message : "The Source Binding could not be refreshed.",
+        },
+      }));
+      setLibraryAttempt((value) => value + 1);
     }
   };
 
@@ -357,6 +416,7 @@ export function ReadingExperience() {
 
   const movePage = async (nextPageIndex: number) => {
     if (!reader || nextPageIndex < 0 || nextPageIndex >= reader.pageCount) return;
+    const previousPageIndex = pageIndex;
     setPageIndex(nextPageIndex);
     setImageState({ kind: "loading" });
     setSaveMessage(null);
@@ -378,9 +438,12 @@ export function ReadingExperience() {
       setLibraryAttempt((value) => value + 1);
     } catch (error) {
       if (generation !== readingGeneration.current) return;
+      setPageIndex(previousPageIndex);
+      setImageState({ kind: "loading" });
       setSaveMessage(
         error instanceof Error ? error.message : "Reading Progress could not be saved.",
       );
+      setLibraryAttempt((value) => value + 1);
     }
   };
 
@@ -535,7 +598,10 @@ export function ReadingExperience() {
         {library.kind === "loaded" && library.items.length === 0 && <p className="reading-notice">Your Library is empty.</p>}
         {library.kind === "loaded" && library.items.length > 0 && (
           <ul className="library-list">
-            {library.items.map((item) => (
+            {library.items.map((item) => {
+              const resumeState = resumeStates[item.id] ?? { kind: "idle" as const };
+              const refreshState = refreshStates[item.sourceBinding.id] ?? { kind: "idle" as const };
+              return (
               <li key={item.id}>
                 <div>
                   <h3>{item.snapshot.title}</h3>
@@ -548,11 +614,63 @@ export function ReadingExperience() {
                         ? "Source Binding refresh required"
                         : reasonLabels[item.sourceBinding.reasonCode ?? "unknown"]}
                   </span>
+                  {resumeState.kind === "pending" && (
+                    <p className="action-state" role="status">Resuming reading…</p>
+                  )}
+                  {resumeState.kind === "success" && (
+                    <p className="action-state success" role="status">Reading resumed.</p>
+                  )}
+                  {resumeState.kind === "failed" && (
+                    <p className="action-state error" role="alert">{resumeState.error}</p>
+                  )}
+                  {refreshState.kind === "pending" && (
+                    <p className="action-state" role="status">Refreshing Source Binding…</p>
+                  )}
+                  {refreshState.kind === "success" && (
+                    <p className="action-state success" role="status">Source Binding refreshed. Resume reading when ready.</p>
+                  )}
+                  {refreshState.kind === "failed" && (
+                    <p className="action-state error" role="alert">{refreshState.error}</p>
+                  )}
                 </div>
-                <button type="button" disabled={deleting || item.sourceBinding.availability !== "available"} onClick={() => void resume(item)}>Resume reading</button>
-                <button type="button" disabled={deleting} onClick={() => { setDeleteError(null); setDeleteTarget(item); }}>Delete from Library</button>
+                <div className="library-actions">
+                  {item.sourceBinding.availability === "available" && (
+                    <button
+                      type="button"
+                      disabled={deleting || resumeState.kind === "pending"}
+                      onClick={() => void resume(item)}
+                    >
+                      {resumeState.kind === "pending"
+                        ? "Resuming reading…"
+                        : resumeState.kind === "failed"
+                          ? "Retry Resume"
+                          : "Resume reading"}
+                    </button>
+                  )}
+                  {item.sourceBinding.availability !== "available" && (
+                    <button
+                      type="button"
+                      disabled={deleting || refreshState.kind === "pending"}
+                      onClick={() => void refreshSourceBinding(item)}
+                    >
+                      {refreshState.kind === "pending"
+                        ? "Refreshing Source Binding…"
+                        : refreshState.kind === "failed"
+                          ? "Retry refresh"
+                      : "Refresh Source Binding"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => { setDeleteError(null); setDeleteTarget(item); }}
+                  >
+                    Delete from Library
+                  </button>
+                </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

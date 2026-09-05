@@ -218,3 +218,10 @@ test("rejects invalid Suwayomi runtime IDs before issuing dependent requests", a
       (error: unknown) => error instanceof ReadingAdapterError && error.code === "unknown");
   }
 });
+
+test("a single image HTTP or network failure is not a provider-wide outage", async () => {
+  for (const pageFetch of [async () => new Response('', {status: 503}), async () => { throw new TypeError('fetch failed'); }]) {
+    const instance = adapter(loadGeneration("reading-generation-1"), {pageFetch});
+    await assert.rejects(instance.readPage("/api/v1/manga/101/chapter/201/page/0"), (error: unknown) => error instanceof ReadingAdapterError && error.code === "page_fetch_failed");
+  }
+});

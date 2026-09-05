@@ -288,7 +288,7 @@ export class CatalogStore {
               ? "disabled"
               : status;
         this.#synchronizeBindings({
-          bindingsRefreshRequired: bindingsRefreshRequired === 1,
+          bindingsRefreshRequired: recovered,
           name: observation.name,
           observedAt: refresh.observedAt,
           pluginKey: observation.pluginKey,
@@ -420,6 +420,10 @@ export class CatalogStore {
           : change,
       );
     });
+  }
+
+  clearBindingsRefreshRequiredWhenAllAvailable(pluginKey: string): void {
+    this.#database.prepare(`UPDATE source_plugin_catalog SET bindings_refresh_required = 0 WHERE plugin_key = ? AND NOT EXISTS (SELECT 1 FROM source_bindings WHERE source_plugin_key = ? AND availability != 'available')`).run(pluginKey, pluginKey);
   }
 
   readCatalog(): SourcePluginCatalogResponse {

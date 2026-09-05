@@ -18,6 +18,8 @@ Status: PARTIALLY VERIFIED
 
 ## Entrypoints
 
+- Source recovery: `apps/core/src/reading-service.ts` checks retained plugin policy before and after reading; `POST /api/v1/source-bindings/:id/refresh` re-resolves saved identity/page without overwriting snapshots or progress. `apps/core/src/source-recovery-http.test.ts` covers disable, scoped failures, restart, and interleaved recovery.
+
 - WebUI: `apps/web/src/App.tsx`, `apps/web/src/PluginHostStatus.tsx`, `apps/web/src/SourcePlugins.tsx`, and `apps/web/src/ReadingExperience.tsx`; React, TypeScript, and Vite in a local browser on Windows. Startup states lead into managed Plugin Host status, retained Source Plugin catalog, fixture search/details/chapter reader, and retained Library Items.
 - Local Core: `apps/core/src/main.ts` composes `apps/core/src/server.ts`, `CatalogStore`, the fixture catalog adapter, `ReadingStore`, `ReadingService`, Source Plugin change service, and the optional approved Suwayomi Plugin Host; it is bound to `127.0.0.1:3210`.
 - Plugin Host lifecycle: `apps/core/src/plugin-host-manager.ts` owns validated spawn/readiness/status/logging/shutdown behavior; `apps/core/src/suwayomi-plugin-host.ts` supplies isolated Suwayomi arguments; `apps/core/java/comicfree/shutdown/ComicFreeShutdownAgent.java` provides the application-level JVM shutdown endpoint.

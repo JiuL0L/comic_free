@@ -85,6 +85,28 @@ select:focus-visible {
   gap: 0.3rem;
 }
 
+.library-actions {
+  display: grid;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.action-state {
+  margin: 0.2rem 0 0;
+  color: #4b4f49;
+  font-size: 0.82rem;
+}
+
+.action-state.success {
+  color: #285d40;
+  font-weight: 700;
+}
+
+.action-state.error {
+  color: #7c352e;
+  font-weight: 700;
+}
+
 .result-list span,
 .library-list p {
   margin: 0;
