@@ -121,6 +121,7 @@ export class ReadingService {
     let sourcePluginKey: string;
     let comicKey: string;
     let chapterKey: string;
+    let existingLibraryItemId: string | undefined;
     let pageIndex = 0;
 
     if ("libraryItemId" in input) {
@@ -137,18 +138,27 @@ export class ReadingService {
       sourcePluginKey = item.sourceBinding.sourcePluginKey;
       comicKey = item.sourceBinding.durableComicKey;
       chapterKey = item.progress.chapterKey;
+      existingLibraryItemId = item.id;
       pageIndex = item.progress.pageIndex;
     } else {
       sourcePluginKey = input.sourcePluginKey;
       comicKey = input.comicKey;
       chapterKey = input.chapterKey;
-      this.#requireAvailableBinding(
-        this.#store.getBySourceIdentity(sourcePluginKey, comicKey),
-      );
+      const item = this.#store.getBySourceIdentity(sourcePluginKey, comicKey);
+      this.#requireAvailableBinding(item);
+      existingLibraryItemId = item?.id;
     }
 
     this.#requirePlugin(sourcePluginKey);
     const resolution = await this.#adapter.resolveChapter(comicKey, chapterKey);
+    if (existingLibraryItemId && !this.#store.get(existingLibraryItemId)) {
+      throw new ReadingServiceError(
+        "library_item_not_found",
+        "The requested Library Item does not exist.",
+        false,
+        404,
+      );
+    }
     requirePageIndex(pageIndex, resolution.pageKeys.length);
     const id = randomUUID();
     const session: ReaderSessionRecord = {
@@ -245,6 +255,26 @@ export class ReadingService {
 
   listLibrary(): LibraryItem[] {
     return this.#store.list();
+  }
+
+  deleteLibraryItem(libraryItemId: string): void {
+    const item = this.#store.get(libraryItemId);
+    if (!item || !this.#store.delete(libraryItemId)) {
+      throw new ReadingServiceError(
+        "library_item_not_found",
+        "The requested Library Item does not exist.",
+        false,
+        404,
+      );
+    }
+    for (const [sessionId, session] of this.#sessions) {
+      if (
+        session.sourcePluginKey === item.sourceBinding.sourcePluginKey &&
+        session.comicKey === item.sourceBinding.durableComicKey
+      ) {
+        this.#sessions.delete(sessionId);
+      }
+    }
   }
 
   updateProgress(libraryItemId: string, input: UpdateProgressRequest): LibraryItem {

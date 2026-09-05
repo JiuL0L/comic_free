@@ -5,6 +5,8 @@ import {
   parseReadingSourcePluginResponse,
   parseCatalogSearchResponse,
   parseCreateReaderSessionRequest,
+  parseDeleteLibraryItemResponse,
+  parseLibraryItemId,
   parseLibraryItemsResponse,
   parseUpdateProgressRequest,
 } from "./index.ts";
@@ -86,6 +88,17 @@ test("progress requests reject negative and out-of-range page indexes", () => {
         pageIndex: 3,
       }),
     /pageIndex/,
+  );
+});
+
+test("Library Item identifiers and delete responses require exact UUID contracts", () => {
+  const id = "1a1e91f0-635d-4dd6-a291-57614b458903";
+  assert.equal(parseLibraryItemId(id), id);
+  assert.deepEqual(parseDeleteLibraryItemResponse({ deletedId: id }), { deletedId: id });
+  assert.throws(() => parseLibraryItemId("deleted"), /UUID/);
+  assert.throws(
+    () => parseDeleteLibraryItemResponse({ deletedId: id, item: {} }),
+    /unexpected field/i,
   );
 });
 

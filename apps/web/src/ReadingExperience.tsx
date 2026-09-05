@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   LIBRARY_ITEMS_PATH,
@@ -13,6 +13,7 @@ import {
   parseCatalogSearchResponse,
   parseComicDetailsResponse,
   parseLibraryItemResponse,
+  parseDeleteLibraryItemResponse,
   parseLibraryItemsResponse,
   parseReaderSessionResponse,
   parseReadingSourcePluginResponse,
@@ -117,6 +118,49 @@ export function ReadingExperience() {
   const [libraryAttempt, setLibraryAttempt] = useState(0);
   const [library, setLibrary] = useState<LibraryState>({ kind: "loading" });
 
+  const [deleteTarget, setDeleteTarget] = useState<LibraryItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const readingGeneration = useRef(0);
+  const deletedIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (deleteTarget) deleteDialog.current?.showModal();
+    else deleteDialog.current?.close();
+  }, [deleteTarget]);
+
+  const deleteItem = async () => {
+    if (!deleteTarget || deleting) return;
+    const target = deleteTarget;
+    readingGeneration.current += 1;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const response = await requestJson(
+        `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}/${encodeURIComponent(target.id)}`,
+        { method: "DELETE" },
+        parseDeleteLibraryItemResponse,
+      );
+      if (response.deletedId !== target.id) throw new Error("Unexpected deletion response. Reload Library to check its state.");
+      deletedIds.current.add(target.id);
+      readingGeneration.current += 1;
+      setLibrary(current => current.kind === "loaded"
+        ? { kind: "loaded", items: current.items.filter(item => item.id !== target.id) }
+        : current);
+      setRetainedId(current => current === target.id ? null : current);
+      setReader(current => current?.sourcePluginKey === target.sourceBinding.sourcePluginKey && current.comicKey === target.sourceBinding.durableComicKey ? null : current);
+      setDeleteMessage(`Deleted ${target.snapshot.title} and its local Reading Progress.`);
+      setDeleteTarget(null);
+      setLibraryAttempt(value => value + 1);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Deletion failed. Please retry.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     void requestJson(
@@ -146,7 +190,9 @@ export function ReadingExperience() {
       { signal: controller.signal },
       parseLibraryItemsResponse,
     ).then(
-      (response) => setLibrary({ kind: "loaded", items: response.items }),
+      (response) => {
+        if (!controller.signal.aborted) setLibrary({ kind: "loaded", items: response.items.filter(item => !deletedIds.current.has(item.id)) });
+      },
       (error: unknown) => {
         if (!controller.signal.aborted) {
           setLibrary({
@@ -221,6 +267,7 @@ export function ReadingExperience() {
 
   const openChapter = async (chapterKey: string) => {
     if (details.kind !== "success") return;
+    const generation = readingGeneration.current;
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
@@ -231,8 +278,10 @@ export function ReadingExperience() {
         }),
         parseReaderSessionResponse,
       );
+      if (generation !== readingGeneration.current) return;
       acceptSession(response.session);
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setDetails({
         kind: "failed",
         error: error instanceof Error ? error.message : "The chapter could not be opened.",
@@ -241,15 +290,18 @@ export function ReadingExperience() {
   };
 
   const resume = async (item: LibraryItem) => {
+    const generation = readingGeneration.current;
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
         json("POST", { libraryItemId: item.id }),
         parseReaderSessionResponse,
       );
+      if (generation !== readingGeneration.current) return;
       acceptSession(response.session);
       setRetainedId(item.id);
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setSaveMessage(error instanceof Error ? error.message : "Reading could not resume.");
     }
   };
@@ -257,6 +309,7 @@ export function ReadingExperience() {
   const renewReaderSession = async () => {
     if (!reader) return;
     const libraryItemId = retainedId;
+    const generation = readingGeneration.current;
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`,
@@ -272,9 +325,11 @@ export function ReadingExperience() {
         ),
         parseReaderSessionResponse,
       );
+      if (generation !== readingGeneration.current) return;
       acceptSession(response.session);
       if (libraryItemId) setRetainedId(libraryItemId);
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setSaveMessage(
         error instanceof Error ? error.message : "The reader session could not be renewed.",
       );
@@ -283,16 +338,19 @@ export function ReadingExperience() {
 
   const retain = async () => {
     if (!reader) return;
+    const generation = readingGeneration.current;
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`,
         json("POST", { pageIndex, sessionId: reader.id }),
         parseLibraryItemResponse,
       );
+      if (generation !== readingGeneration.current) return;
       setRetainedId(response.item.id);
       setSaveMessage("Saved to Library");
       setLibraryAttempt((value) => value + 1);
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setSaveMessage(error instanceof Error ? error.message : "The comic could not be retained.");
     }
   };
@@ -303,6 +361,7 @@ export function ReadingExperience() {
     setImageState({ kind: "loading" });
     setSaveMessage(null);
     if (!retainedId) return;
+    const generation = readingGeneration.current;
     try {
       await requestJson(
         `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}/${encodeURIComponent(retainedId)}/progress`,
@@ -314,9 +373,11 @@ export function ReadingExperience() {
         }),
         parseLibraryItemResponse,
       );
+      if (generation !== readingGeneration.current) return;
       setSaveMessage("Reading Progress saved");
       setLibraryAttempt((value) => value + 1);
     } catch (error) {
+      if (generation !== readingGeneration.current) return;
       setSaveMessage(
         error instanceof Error ? error.message : "Reading Progress could not be saved.",
       );
@@ -444,7 +505,7 @@ export function ReadingExperience() {
           </div>
           <div className="reader-actions">
             <button type="button" disabled={pageIndex === 0} onClick={() => void movePage(pageIndex - 1)}>Previous page</button>
-            <button type="button" disabled={Boolean(retainedId)} onClick={() => void retain()}>Retain in Library</button>
+            <button type="button" disabled={Boolean(retainedId) || deleting} onClick={() => void retain()}>Retain in Library</button>
             <button type="button" disabled={pageIndex === reader.pageCount - 1} onClick={() => void movePage(pageIndex + 1)}>Next page</button>
           </div>
           {saveMessage && <p className="save-message" role="status">{saveMessage}</p>}
@@ -459,6 +520,16 @@ export function ReadingExperience() {
           </div>
           <button type="button" disabled={library.kind === "loading"} onClick={() => setLibraryAttempt((value) => value + 1)}>Reload Library</button>
         </div>
+        {deleteMessage && <p role="status" className="reading-notice">{deleteMessage}</p>}
+        <dialog ref={deleteDialog} role="alertdialog" aria-label="Delete Library Item" aria-describedby="delete-library-description" onCancel={event => { event.preventDefault(); if (!deleting) setDeleteTarget(null); }}>
+          <h3>Delete Library Item</h3>
+          <p id="delete-library-description">Delete “{deleteTarget?.snapshot.title}” from your Library? Its local Source Binding, Last Known Snapshot and Reading Progress will be permanently removed.</p>
+          {deleteError && <p role="alert" className="reading-notice error">{deleteError}</p>}
+          <div className="reader-actions">
+            <button type="button" autoFocus disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <button type="button" disabled={deleting} onClick={() => void deleteItem()}>{deleting ? "Deleting…" : "Confirm deletion"}</button>
+          </div>
+        </dialog>
         {library.kind === "loading" && <p className="reading-notice">Loading your Library…</p>}
         {library.kind === "failed" && <p className="reading-notice error" role="alert">{library.error}</p>}
         {library.kind === "loaded" && library.items.length === 0 && <p className="reading-notice">Your Library is empty.</p>}
@@ -478,7 +549,8 @@ export function ReadingExperience() {
                         : reasonLabels[item.sourceBinding.reasonCode ?? "unknown"]}
                   </span>
                 </div>
-                <button type="button" disabled={item.sourceBinding.availability !== "available"} onClick={() => void resume(item)}>Resume reading</button>
+                <button type="button" disabled={deleting || item.sourceBinding.availability !== "available"} onClick={() => void resume(item)}>Resume reading</button>
+                <button type="button" disabled={deleting} onClick={() => { setDeleteError(null); setDeleteTarget(item); }}>Delete from Library</button>
               </li>
             ))}
           </ul>

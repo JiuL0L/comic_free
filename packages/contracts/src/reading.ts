@@ -129,6 +129,10 @@ export interface LibraryItemsResponse {
   items: LibraryItem[];
 }
 
+export interface DeleteLibraryItemResponse {
+  deletedId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -152,6 +156,16 @@ function string(value: unknown, field: string): string {
     throw new TypeError(`Invalid ${field}: expected a non-empty string.`);
   }
   return value;
+}
+
+const LIBRARY_ITEM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseLibraryItemId(value: unknown): string {
+  const id = string(value, "libraryItemId");
+  if (!LIBRARY_ITEM_ID.test(id)) {
+    throw new TypeError("Invalid libraryItemId: expected a UUID.");
+  }
+  return id;
 }
 
 function timestamp(value: unknown, field: string): string {
@@ -457,6 +471,12 @@ export function parseLibraryItemsResponse(value: unknown): LibraryItemsResponse 
   return {
     items: response.items.map((item, index) => libraryItem(item, `items[${index}]`)),
   };
+}
+
+export function parseDeleteLibraryItemResponse(value: unknown): DeleteLibraryItemResponse {
+  const response = record(value, "delete Library Item response");
+  exactFields(response, ["deletedId"], "delete Library Item response");
+  return { deletedId: parseLibraryItemId(response.deletedId) };
 }
 
 export function parseApiErrorResponse(value: unknown): ApiErrorResponse {

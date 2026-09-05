@@ -191,3 +191,14 @@ select:focus-visible {
     flex-direction: column;
   }
 }
+
+.library-panel dialog {
+  max-width: min(34rem, calc(100vw - 2rem));
+  border: 1px solid #aaa99f;
+  border-radius: 4px;
+  padding: 1.5rem;
+  background: #fbfaf6;
+  color: #202320;
+}
+.library-panel dialog::backdrop { background: rgb(32 35 32 / 45%); }
+.library-panel dialog .reader-actions { grid-template-columns: repeat(2, 1fr); }

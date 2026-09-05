@@ -16,6 +16,7 @@ import {
   parseComicDetailsResponse,
   parseLibraryItemResponse,
   parseLibraryItemsResponse,
+  parseDeleteLibraryItemResponse,
   parseReaderSessionResponse,
 } from "@comic-free/contracts";
 
@@ -38,6 +39,7 @@ const TEST_ROOT = path.join(
 
 interface RunningReadingServer {
   baseUrl: string;
+  store: ReadingStore;
   stop: () => Promise<void>;
 }
 
@@ -66,6 +68,7 @@ async function startReadingServer(databasePath: string): Promise<RunningReadingS
   assert(address && typeof address === "object");
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
+    store,
     stop: async () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -282,6 +285,118 @@ test("invalid requests and bounds return structured errors without mutation", as
       await responseJson(await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}`)),
     );
     assert.deepEqual(library.items, []);
+  } finally {
+    await running.stop();
+    removeTestDirectory(directory);
+  }
+});
+
+test("DELETE removes only the requested Library Item and invalidates its reader sessions", async () => {
+  const directory = createTestDirectory();
+  const databasePath = path.join(directory, "comic-free.sqlite");
+  let running = await startReadingServer(databasePath);
+
+  try {
+    const firstSession = parseReaderSessionResponse(
+      await responseJson(
+        await fetch(
+          `${running.baseUrl}${READER_SESSIONS_PATH}`,
+          json("POST", {
+            chapterKey: FIXTURE_CHAPTER_KEY,
+            comicKey: FIXTURE_COMIC_KEY,
+            sourcePluginKey: FIXTURE_SOURCE_PLUGIN.key,
+          }),
+        ),
+      ),
+    ).session;
+    const first = parseLibraryItemResponse(
+      await responseJson(
+        await fetch(
+          `${running.baseUrl}${LIBRARY_ITEMS_PATH}`,
+          json("POST", { pageIndex: 1, sessionId: firstSession.id }),
+        ),
+      ),
+    ).item;
+    const second = running.store.retain({
+      chapterKey: "chapter/other",
+      chapterLabel: "Chapter Other",
+      comicKey: "comic/unrelated",
+      comicProviderKey: "fixture.other",
+      coverRef: "fixture-cover/unrelated",
+      pageCount: 1,
+      pageIndex: 0,
+      sourcePluginKey: "fixture:other",
+      title: "Unrelated Library Item",
+    });
+
+    const beforeInvalidDelete = parseLibraryItemsResponse(
+      await responseJson(await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}`)),
+    );
+    assert.deepEqual(beforeInvalidDelete.items.map((item) => item.id), [first.id, second.id]);
+
+    for (const invalidDelete of [
+      `${running.baseUrl}${LIBRARY_ITEMS_PATH}/not-a-uuid`,
+      `${running.baseUrl}${LIBRARY_ITEMS_PATH}/${first.id}?unexpected=true`,
+    ]) {
+      const response = await fetch(invalidDelete, { method: "DELETE" });
+      assert.equal(response.status, 400);
+      assert.equal(parseApiErrorResponse(await responseJson(response)).error.code, "invalid_request");
+    }
+    const bodyDelete = await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}/${first.id}`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(bodyDelete.status, 400);
+    assert.deepEqual(
+      parseLibraryItemsResponse(
+        await responseJson(await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}`)),
+      ),
+      beforeInvalidDelete,
+    );
+
+    const deletedResponse = await fetch(
+      `${running.baseUrl}${LIBRARY_ITEMS_PATH}/${first.id}`,
+      { method: "DELETE" },
+    );
+    assert.equal(deletedResponse.status, 200);
+    assert.deepEqual(parseDeleteLibraryItemResponse(await responseJson(deletedResponse)), {
+      deletedId: first.id,
+    });
+
+    const staleRetain = await fetch(
+      `${running.baseUrl}${LIBRARY_ITEMS_PATH}`,
+      json("POST", { pageIndex: 1, sessionId: firstSession.id }),
+    );
+    assert.equal(staleRetain.status, 404);
+    assert.equal(
+      parseApiErrorResponse(await responseJson(staleRetain)).error.code,
+      "reader_session_not_found",
+    );
+
+    const repeated = await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}/${first.id}`, {
+      method: "DELETE",
+    });
+    assert.equal(repeated.status, 404);
+    assert.equal(
+      parseApiErrorResponse(await responseJson(repeated)).error.code,
+      "library_item_not_found",
+    );
+    assert.deepEqual(
+      parseLibraryItemsResponse(
+        await responseJson(await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}`)),
+      ).items,
+      [second],
+    );
+
+    await running.stop();
+    running = await startReadingServer(databasePath);
+    assert.deepEqual(
+      parseLibraryItemsResponse(
+        await responseJson(await fetch(`${running.baseUrl}${LIBRARY_ITEMS_PATH}`)),
+      ).items,
+      [second],
+    );
   } finally {
     await running.stop();
     removeTestDirectory(directory);
