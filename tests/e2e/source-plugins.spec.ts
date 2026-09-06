@@ -97,9 +97,9 @@ test("retains every Source Plugin state through failure, restart, removal, and r
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Source Plugins" })).toBeVisible();
-  await expect(page.getByText("No Source Plugins have been observed yet.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "漫画来源插件" })).toBeVisible();
+  await expect(page.getByText("尚未发现漫画来源插件。")).toBeVisible();
 
   await writeFixture({
     outcome: "success",
@@ -134,22 +134,22 @@ test("retains every Source Plugin state through failure, restart, removal, and r
     })),
   });
 
-  await page.getByRole("button", { name: "Refresh Source Plugins" }).click();
-  await expect(page.getByText("Refreshing catalog…")).toBeVisible();
+  await page.getByRole("button", { name: "刷新漫画来源插件" }).click();
+  await expect(page.getByText("正在刷新目录…")).toBeVisible();
   for (const label of [
-    "Healthy",
-    "Disabled",
-    "Missing",
-    "Incompatible",
-    "Plugin Host unavailable",
-    "Comic Provider unreachable",
-    "Unknown",
+    "正常",
+    "已停用",
+    "缺失",
+    "不兼容",
+    "插件宿主不可用",
+    "漫画来源无法连接",
+    "未知",
   ]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
 
   await page.route("**/api/v1/source-plugins/refresh", (route) => route.abort());
-  await page.getByRole("button", { name: "Refresh Source Plugins" }).click();
+  await page.getByRole("button", { name: "刷新漫画来源插件" }).click();
   await expect(page.getByText("Refresh request failed", { exact: true })).toBeVisible();
   await expect(page.getByText("Healthy Fixture")).toBeVisible();
   await page.unroute("**/api/v1/source-plugins/refresh");
@@ -160,7 +160,7 @@ test("retains every Source Plugin state through failure, restart, removal, and r
     reasonCode: "refresh_failed",
     message: "The deterministic catalog refresh failed.",
   });
-  await page.getByRole("button", { name: "Refresh Source Plugins" }).click();
+  await page.getByRole("button", { name: "刷新漫画来源插件" }).click();
   await expect(page.getByText("Refresh failed", { exact: true })).toBeVisible();
   await expect(page.getByText("The deterministic catalog refresh failed.")).toBeVisible();
   await expect(page.getByText("Healthy Fixture")).toBeVisible();
@@ -186,8 +186,8 @@ test("retains every Source Plugin state through failure, restart, removal, and r
       },
     ],
   });
-  await page.getByRole("button", { name: "Refresh Source Plugins" }).click();
-  await expect(page.getByText("Confirmed removed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "刷新漫画来源插件" }).click();
+  await expect(page.getByText("已确认移除", { exact: true })).toBeVisible();
 
   await writeFixture({
     outcome: "success",
@@ -204,55 +204,55 @@ test("retains every Source Plugin state through failure, restart, removal, and r
       },
     ],
   });
-  await page.getByRole("button", { name: "Refresh Source Plugins" }).click();
-  await expect(page.getByText("Healthy", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Source Bindings require explicit refresh.")).toBeVisible();
+  await page.getByRole("button", { name: "刷新漫画来源插件" }).click();
+  await expect(page.getByText("正常", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("来源绑定需要手动刷新。")).toBeVisible();
 });
 
 test("shows pending, successful, failed, and restart-required plugin changes", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Manage a trusted change" })).toBeVisible();
-  await page.getByLabel("Extension store URL").fill(
+  await expect(page.getByRole("heading", { name: "管理已确认的变更" })).toBeVisible();
+  await page.getByLabel("扩展商店地址").fill(
     "https://fixtures.comic-free.invalid/repo/index.pb",
   );
-  await page.getByLabel("Package name").fill("fixture:reader");
-  await page.getByLabel("Approved version").fill("1.0.0");
+  await page.getByLabel("包名").fill("fixture:reader");
+  await page.getByLabel("已批准版本").fill("1.0.0");
   await page.getByLabel(/I approve install/i).check();
-  await page.getByRole("button", { name: "Apply approved change" }).click();
-  await expect(page.getByText("Applying approved change…")).toBeVisible();
+  await page.getByRole("button", { name: "应用已批准变更" }).click();
+  await expect(page.getByText("正在应用已批准变更…")).toBeVisible();
   await expect(page.getByText("Comic Free Fixture Reader was installed.")).toBeVisible();
   await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
 
   await page.reload();
   await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
-  await page.getByLabel("Extension store URL").fill(
+  await page.getByLabel("扩展商店地址").fill(
     "https://fixtures.comic-free.invalid/repo/index.pb",
   );
-  await page.getByLabel("Package name").fill("fixture:reader");
+  await page.getByLabel("包名").fill("fixture:reader");
 
-  await page.getByLabel("Change action").selectOption("update");
-  await page.getByLabel("Approved version").fill("1.1.0");
+  await page.getByLabel("变更操作").selectOption("update");
+  await page.getByLabel("已批准版本").fill("1.1.0");
   await page.getByLabel(/I approve update/i).check();
-  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await page.getByRole("button", { name: "应用已批准变更" }).click();
   await expect(page.getByText(/Restart required/i)).toBeVisible();
 
-  await page.getByLabel("Change action").selectOption("disable");
+  await page.getByLabel("变更操作").selectOption("disable");
   await page.getByLabel(/I approve disable/i).check();
-  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await page.getByRole("button", { name: "应用已批准变更" }).click();
   await expect(page.getByText("Comic Free Fixture Reader was disabled.")).toBeVisible();
-  await expect(page.getByText("Disabled", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("已停用", { exact: true }).last()).toBeVisible();
 
-  await page.getByLabel("Change action").selectOption("restore");
-  await page.getByLabel("Approved version").fill("1.1.0");
+  await page.getByLabel("变更操作").selectOption("restore");
+  await page.getByLabel("已批准版本").fill("1.1.0");
   await page.getByLabel(/I approve restore/i).check();
-  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await page.getByRole("button", { name: "应用已批准变更" }).click();
   await expect(page.getByText("Comic Free Fixture Reader was restored.")).toBeVisible();
 
-  await page.getByLabel("Package name").fill("missing.secret=must-not-leak");
+  await page.getByLabel("包名").fill("missing.secret=must-not-leak");
   await page.getByLabel(/I approve restore/i).check();
-  await page.getByRole("button", { name: "Apply approved change" }).click();
+  await page.getByRole("button", { name: "应用已批准变更" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "The approved Source Plugin was not found",
   );

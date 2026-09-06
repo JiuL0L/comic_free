@@ -62,6 +62,7 @@ interface SuwayomiMangaDetails extends SuwayomiManga {
 }
 
 interface SuwayomiChapter {
+  chapterNumber: number | null;
   id: number;
   label: string;
   url: string;
@@ -219,7 +220,10 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
       );
       const runtimeManga = await this.#resolveManga(reference);
       const chapters = await this.#fetchChapters(runtimeManga.id);
-      return chapters.map((chapter) => ({
+      const ordered = chapters.every(chapter => chapter.chapterNumber !== null)
+        ? chapters.toSorted((left, right) => left.chapterNumber! - right.chapterNumber!)
+        : chapters;
+      return ordered.map((chapter) => ({
         chapterKey: encodeReference(CHAPTER_KEY_PREFIX, {
           label: chapter.label,
           url: chapter.url,
@@ -462,6 +466,8 @@ function parseChaptersResponse(value: unknown): SuwayomiChapter[] {
   return result.chapters.map((candidate) => {
     const chapter = object(candidate, "chapter");
     return {
+      chapterNumber: typeof chapter.chapterNumber === "number" && Number.isFinite(chapter.chapterNumber) && chapter.chapterNumber >= 0
+        ? chapter.chapterNumber : null,
       id: runtimeId(chapter.id),
       label: requiredString(chapter.name, "chapter name"),
       url: providerUrl(chapter.url),

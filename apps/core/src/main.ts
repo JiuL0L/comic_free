@@ -11,25 +11,29 @@ import { CatalogStore } from "./catalog-store.ts";
 import type { PluginHostManager } from "./plugin-host-manager.ts";
 import { ReadingStore } from "./reading-store.ts";
 import { createLocalCoreServer } from "./server.ts";
+import { SettingsService, SettingsStore, loadEffectiveSettings } from "./settings.ts";
 import { createSuwayomiPluginHost } from "./suwayomi-plugin-host.ts";
 
 const dataDirectory = path.resolve(process.env.COMIC_FREE_DATA_DIR ?? ".local-data");
 const databasePath = path.join(dataDirectory, "comic-free.sqlite");
 const catalogStore = new CatalogStore(databasePath);
 const readingStore = new ReadingStore(databasePath);
+const loadedSettings = await loadEffectiveSettings(dataDirectory);
+const settingsService = new SettingsService(
+  new SettingsStore(dataDirectory),
+  loadedSettings.effectiveSettings,
+);
 
-const configuredJarPath = process.env.COMIC_FREE_SUWAYOMI_JAR?.trim();
-const approvedSha256 = process.env.COMIC_FREE_SUWAYOMI_APPROVED_SHA256?.trim();
-const suwayomiProxyUrl = process.env.COMIC_FREE_SUWAYOMI_PROXY?.trim();
+const { approvedSha256, jarPath: configuredJarPath, port: suwayomiPort, proxyUrl: suwayomiProxyUrl } = loadedSettings.effectiveSettings;
 let pluginHost: PluginHostManager | null = null;
-let pluginHostFallback = initialPluginHostStatus(configuredJarPath, approvedSha256);
+let pluginHostFallback = initialPluginHostStatus(configuredJarPath ?? undefined, approvedSha256 ?? undefined);
 
 if (configuredJarPath && approvedSha256) {
   try {
     pluginHost = await createSuwayomiPluginHost({
       approvedArtifactSha256: approvedSha256,
       dataRoot: path.join(dataDirectory, "suwayomi", "managed"),
-      internalPort: Number.parseInt(process.env.COMIC_FREE_SUWAYOMI_PORT ?? "4568", 10),
+      internalPort: suwayomiPort,
       jarPath: configuredJarPath,
       ...(suwayomiProxyUrl ? { proxyUrl: suwayomiProxyUrl } : {}),
     });
@@ -56,6 +60,7 @@ const server = createLocalCoreServer({
   catalogStore,
   pluginHostStatus,
   readingService,
+  settingsService,
   sourcePluginChangeService,
 });
 

@@ -118,6 +118,23 @@ test("Suwayomi GraphQL errors become stable adapter errors without payload leaka
   );
 });
 
+test("chapter navigation follows ascending known chapter numbers and preserves unknown catalog order", async () => {
+  const generation = loadGeneration("reading-generation-1");
+  const chapters = [
+    { id: 203, name: "Finale", url: "/chapter/finale", chapterNumber: 12 },
+    { id: 202, name: "Interlude", url: "/chapter/interlude", chapterNumber: 2.5 },
+    { id: 201, name: "Opening", url: "/chapter/opening", chapterNumber: 1 },
+  ];
+  const known = adapter({ ...generation, chapters: { data: { fetchChapters: { chapters } } } });
+  const comic = (await known.search("adventure"))[0]!;
+  assert.deepEqual((await known.getChapters(comic.comicKey)).map(chapter => chapter.label), ["Opening", "Interlude", "Finale"]);
+
+  const unknown = adapter({ ...generation, chapters: { data: { fetchChapters: {
+    chapters: chapters.map(chapter => ({ ...chapter, chapterNumber: -1 })),
+  } } } });
+  assert.deepEqual((await unknown.getChapters(comic.comicKey)).map(chapter => chapter.label), ["Finale", "Interlude", "Opening"]);
+});
+
 test("Suwayomi page reads preserve exact image bytes and reject unsafe responses", async () => {
   const generation = loadGeneration("reading-generation-1");
   const expected = Buffer.from([0xff, 0xd8, 0x43, 0x46, 0xff, 0xd9]);

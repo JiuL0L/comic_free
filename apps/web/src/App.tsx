@@ -6,9 +6,8 @@ import {
   type HealthResponse,
 } from "@comic-free/contracts";
 
-import { PluginHostStatus } from "./PluginHostStatus.tsx";
 import { ReadingExperience } from "./ReadingExperience.tsx";
-import { SourcePlugins } from "./SourcePlugins.tsx";
+import { SettingsPanel } from "./Settings.tsx";
 import { requestJson } from "./api.ts";
 
 type StartupState =
@@ -49,11 +48,11 @@ export function App() {
     return (
       <main className="shell" aria-live="polite">
         <p className="eyebrow">LOCAL READER / STARTUP</p>
-        <h1>Starting Comic Free</h1>
-        <p className="summary">Connecting to the Local Core on loopback…</p>
+        <h1>正在启动每日漫画</h1>
+        <p className="summary">正在连接本机 Local Core…</p>
         <div className="status-line">
           <span className="status-dot pending" aria-hidden="true" />
-          <span>Waiting for 127.0.0.1:3210</span>
+          <span>正在等待 127.0.0.1:3210</span>
         </div>
       </main>
     );
@@ -63,14 +62,13 @@ export function App() {
     return (
       <main className="shell" aria-live="assertive">
         <p className="eyebrow">LOCAL READER / STARTUP</p>
-        <h1>Comic Free could not start</h1>
+        <h1>每日漫画未能启动</h1>
         <p className="summary">{state.message}</p>
         <p className="guidance">
-          Check the terminal running <code>pnpm dev</code>, resolve the reported Local Core
-          problem, then retry.
+          请检查运行 <code>pnpm dev</code> 的终端，解决 Local Core 报错后重试。
         </p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>
-          Retry Local Core
+          重试 Local Core
         </button>
       </main>
     );
@@ -78,30 +76,22 @@ export function App() {
 
   return (
     <main className="shell" aria-live="polite">
-      <section className="startup-ready">
-        <p className="eyebrow">LOCAL READER / SYSTEM STATUS</p>
-        <h1>Comic Free is ready</h1>
-        <p className="summary">
-          The Browser WebUI is connected through the Comic Free REST boundary.
-        </p>
-        <div className="status-line">
-          <span className="status-dot ready" aria-hidden="true" />
-          <span>Local Core · API {state.health.apiVersion}</span>
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">COMIC FREE / LOCAL READER</p>
+          <h1>每日漫画</h1>
+          <p className="summary">本地书架、在线找漫画，阅读进度只保存到这台电脑。</p>
         </div>
-        <dl className="facts">
-          <div>
-            <dt>Binding</dt>
-            <dd>127.0.0.1 only</dd>
-          </div>
-          <div>
-            <dt>Service</dt>
-            <dd>{state.health.service}</dd>
-          </div>
-        </dl>
-      </section>
-      <PluginHostStatus />
-      <SourcePlugins />
+        <div className="status-line"><span className="status-dot ready" aria-hidden="true" /><span>Local Core · API {state.health.apiVersion}</span></div>
+      </header>
+      <nav className="primary-nav" aria-label="主导航">
+        <a href="#library">书架</a>
+        <a href="#discover">找漫画</a>
+        <a href="#reader">阅读</a>
+        <a href="#settings">设置</a>
+      </nav>
       <ReadingExperience />
+      <SettingsPanel />
     </main>
   );
 }

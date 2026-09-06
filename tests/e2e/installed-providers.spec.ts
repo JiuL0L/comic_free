@@ -82,14 +82,14 @@ function change(action: "disable" | "install" | "restore" | "update") {
 }
 
 async function searchAndOpen(page: import("@playwright/test").Page, optionValue: string) {
-  const select = page.getByLabel("Comic Provider", { exact: true });
+  const select = page.getByLabel("漫画来源", { exact: true });
   await select.selectOption(optionValue);
-  await page.getByLabel("Search query").fill("adventure");
+  await page.getByLabel("搜索关键词").fill("adventure");
   const response = page.waitForResponse((candidate) => {
     const url = new URL(candidate.url());
     return url.pathname === "/api/v1/catalog/search" && url.searchParams.get("comicProviderKey") === "fixture.provider.fr";
   });
-  await page.getByRole("button", { name: "Search catalog" }).click();
+  await page.getByRole("button", { name: "搜索漫画" }).click();
   return response;
 }
 
@@ -108,8 +108,9 @@ test.afterAll(async () => {
 
 test("discovers installed same-plugin providers and preserves the selected route through recovery and restart", async ({ page }) => {
   test.setTimeout(45_000);
+  await page.addInitScript(() => window.localStorage.setItem("comic-free-reading-mode", "page"));
   await page.goto("/");
-  const select = page.getByLabel("Comic Provider", { exact: true });
+  const select = page.getByLabel("漫画来源", { exact: true });
   await expect(select.locator(`option[value="${EN_PROVIDER_VALUE}"]`)).toHaveCount(1);
 
   const installed = await page.request.post(`${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`, {
@@ -130,19 +131,20 @@ test("discovers installed same-plugin providers and preserves the selected route
   ).toHaveLength(1);
 
   await select.selectOption(EN_PROVIDER_VALUE);
-  await page.getByLabel("Search query").fill("adventure");
-  await page.getByRole("button", { name: "Search catalog" }).click();
+  await page.getByLabel("搜索关键词").fill("adventure");
+  await page.getByRole("button", { name: "搜索漫画" }).click();
   await expect(page.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
 
   const frSearch = await searchAndOpen(page, FR_PROVIDER_VALUE);
   expect(frSearch.status()).toBe(200);
   await expect(page.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Open details" }).click();
+  await page.getByRole("button", { name: "查看详情" }).click();
   await expect(page.getByRole("heading", { name: "Deterministic Adventure · fr" })).toBeVisible();
-  await page.getByRole("button", { name: "Read Chapter 1 · The Local Beginning" }).click();
+  await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
 
-  const reader = page.getByRole("region", { name: "Reader" });
-  const image = reader.getByRole("img", { name: "Deterministic Adventure · fr — page 1 of 3" });
+  const reader = page.getByRole("region", { name: "阅读器" });
+  await reader.getByRole("button", { name: "单页阅读" }).click();
+  const image = reader.getByRole("img", { name: "Deterministic Adventure · fr，第 1 / 3 页" });
   await expect(image).toBeVisible();
   await expect
     .poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
@@ -150,26 +152,26 @@ test("discovers installed same-plugin providers and preserves the selected route
   const pageResponse = await page.request.get((await image.getAttribute("src"))!);
   expect(await pageResponse.text()).toContain("COMIC FREE FR FIXTURE");
 
-  await reader.getByRole("button", { name: "Next page" }).click();
-  await expect(reader.getByText("Page 2 of 3", { exact: true })).toBeVisible();
-  await reader.getByRole("button", { name: "Retain in Library" }).click();
-  const library = page.getByRole("region", { name: "Your Library" });
+  await reader.getByRole("button", { name: "下一页" }).click();
+  await expect(reader.getByText("第 2 / 3 页", { exact: true })).toBeVisible();
+  await reader.getByRole("button", { name: "加入书架" }).click();
+  const library = page.getByRole("region", { name: "书架" });
   await expect(library.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
   const retained = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
   expect(retained.items[0].sourceBinding.comicProviderKey).toBe("fixture.provider.fr");
   expect(retained.items[0].progress.pageIndex).toBe(1);
 
   expect((await page.request.post(`${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`, { data: change("disable") })).status()).toBe(200);
-  await page.getByRole("button", { name: "Reload Library" }).click();
+  await page.getByRole("button", { name: "刷新书架" }).click();
   await expect(library.getByText("Source Plugin disabled")).toBeVisible();
 
   expect((await page.request.post(`${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`, { data: change("restore") })).status()).toBe(200);
-  await page.getByRole("button", { name: "Reload Library" }).click();
-  await expect(library.getByText("Source Binding refresh required")).toBeVisible();
-  await library.getByRole("button", { name: "Refresh Source Binding" }).click();
-  await expect(library.getByText("Source Binding refreshed. Resume reading when ready.")).toBeVisible();
-  await library.getByRole("button", { name: "Resume reading" }).click();
-  await expect(reader.getByText("Page 2 of 3", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "刷新书架" }).click();
+  await expect(library.getByText("需要刷新来源绑定")).toBeVisible();
+  await library.getByRole("button", { name: "刷新来源绑定" }).click();
+  await expect(library.getByText("来源绑定已刷新，可以恢复阅读。")).toBeVisible();
+  await library.getByRole("button", { name: "继续阅读" }).click();
+  await expect(reader.getByText("第 2 / 3 页", { exact: true })).toBeVisible();
 
   const beforeRestart = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
   const updated = await page.request.post(`${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`, {
@@ -182,7 +184,7 @@ test("discovers installed same-plugin providers and preserves the selected route
   await stopApplication();
   await startApplication();
   await page.goto("/");
-  const restartedSelect = page.getByLabel("Comic Provider", { exact: true });
+  const restartedSelect = page.getByLabel("漫画来源", { exact: true });
   await expect
     .poll(
       async () => restartedSelect.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)),
@@ -190,14 +192,14 @@ test("discovers installed same-plugin providers and preserves the selected route
     )
     .toContain(FR_PROVIDER_VALUE);
   await restartedSelect.selectOption(FR_PROVIDER_VALUE);
-  const restartedLibrary = page.getByRole("region", { name: "Your Library" });
+  const restartedLibrary = page.getByRole("region", { name: "书架" });
   await expect(restartedLibrary.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
-  await expect(restartedLibrary.getByText("Source Binding refresh required")).toBeVisible();
+  await expect(restartedLibrary.getByText("需要刷新来源绑定")).toBeVisible();
   const afterRestart = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
   expect(afterRestart.items[0].snapshot).toEqual(beforeRestart.items[0].snapshot);
   expect(afterRestart.items[0].progress).toEqual(beforeRestart.items[0].progress);
-  await restartedLibrary.getByRole("button", { name: "Refresh Source Binding" }).click();
-  await expect(restartedLibrary.getByText("Source Binding refreshed. Resume reading when ready.")).toBeVisible();
-  await restartedLibrary.getByRole("button", { name: "Resume reading" }).click();
-  await expect(page.getByRole("region", { name: "Reader" }).getByText("Page 2 of 3", { exact: true })).toBeVisible();
+  await restartedLibrary.getByRole("button", { name: "刷新来源绑定" }).click();
+  await expect(restartedLibrary.getByText("来源绑定已刷新，可以恢复阅读。")).toBeVisible();
+  await restartedLibrary.getByRole("button", { name: "继续阅读" }).click();
+  await expect(page.getByRole("region", { name: "阅读器" }).getByText("第 2 / 3 页", { exact: true })).toBeVisible();
 });

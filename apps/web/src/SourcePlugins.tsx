@@ -16,14 +16,14 @@ import {
 import { requestJson } from "./api.ts";
 
 const statusLabels: Record<SourcePluginStatus, string> = {
-  healthy: "Healthy",
-  disabled: "Disabled",
-  missing: "Missing",
-  incompatible: "Incompatible",
-  plugin_host_unavailable: "Plugin Host unavailable",
-  comic_provider_unreachable: "Comic Provider unreachable",
-  unknown: "Unknown",
-  confirmed_removed: "Confirmed removed",
+  healthy: "正常",
+  disabled: "已停用",
+  missing: "缺失",
+  incompatible: "不兼容",
+  plugin_host_unavailable: "插件宿主不可用",
+  comic_provider_unreachable: "漫画来源无法连接",
+  unknown: "未知",
+  confirmed_removed: "已确认移除",
 };
 
 type CatalogState =
@@ -148,14 +148,14 @@ export function SourcePlugins() {
       <div className="section-heading">
         <div>
           <p className="eyebrow">CATALOG / LOCAL RECORD</p>
-          <h2 id="source-plugins-heading">Source Plugins</h2>
+          <h2 id="source-plugins-heading">漫画来源插件</h2>
         </div>
         <button
           type="button"
           disabled={refreshing || state.kind === "loading"}
           onClick={() => void refresh()}
         >
-          Refresh Source Plugins
+          刷新漫画来源插件
         </button>
       </div>
 
@@ -169,7 +169,7 @@ export function SourcePlugins() {
         <div className="plugin-change-heading">
           <div>
             <p className="eyebrow">EXPLICIT APPROVAL / THIRD-PARTY CODE</p>
-            <h3>Manage a trusted change</h3>
+            <h3>管理已确认的变更</h3>
           </div>
           <p>
             Comic Free sends this request only to the Local Core. Install, update,
@@ -178,7 +178,7 @@ export function SourcePlugins() {
         </div>
         <div className="plugin-change-fields">
           <label>
-            Change action
+            变更操作
             <select
               value={action}
               onChange={(event) => {
@@ -194,7 +194,7 @@ export function SourcePlugins() {
             </select>
           </label>
           <label>
-            Extension store URL
+            扩展商店地址
             <input
               type="url"
               value={storeUrl}
@@ -206,7 +206,7 @@ export function SourcePlugins() {
             />
           </label>
           <label>
-            Package name
+            包名
             <input
               value={packageName}
               onChange={(event) => {
@@ -217,7 +217,7 @@ export function SourcePlugins() {
             />
           </label>
           <label>
-            Approved version
+            已批准版本
             <input
               disabled={action === "disable"}
               value={action === "disable" ? "Not required for disable" : expectedVersion}
@@ -243,11 +243,11 @@ export function SourcePlugins() {
           type="submit"
           disabled={!sourceComplete || !approved || change.kind === "pending"}
         >
-          Apply approved change
+          应用已批准变更
         </button>
         {change.kind === "pending" && (
           <p className="catalog-notice" aria-live="polite">
-            Applying approved change…
+            正在应用已批准变更…
           </p>
         )}
         {change.kind === "failed" && (
@@ -281,7 +281,7 @@ export function SourcePlugins() {
 
       {state.kind === "loading" && (
         <p className="catalog-notice" aria-live="polite">
-          Loading Source Plugin catalog…
+          正在加载漫画来源插件目录…
         </p>
       )}
       {state.kind === "failed" && (
@@ -297,7 +297,7 @@ export function SourcePlugins() {
         <>
           {refreshing && (
             <p className="catalog-notice" aria-live="polite">
-              Refreshing catalog…
+              正在刷新目录…
             </p>
           )}
           {state.requestError && (
@@ -315,7 +315,7 @@ export function SourcePlugins() {
             </div>
           )}
           {state.catalog.entries.length === 0 ? (
-            <p className="catalog-notice empty">No Source Plugins have been observed yet.</p>
+            <p className="catalog-notice empty">尚未发现漫画来源插件。</p>
           ) : (
             <ul className="plugin-grid">
               {state.catalog.entries.map((entry) => (
@@ -331,17 +331,17 @@ export function SourcePlugins() {
                   </div>
                   <dl>
                     <div>
-                      <dt>Version</dt>
-                      <dd>{entry.version ?? "Not reported"}</dd>
+                      <dt>版本</dt>
+                      <dd>{entry.version ?? "未报告"}</dd>
                     </div>
                     <div>
-                      <dt>Observed</dt>
+                      <dt>发现时间</dt>
                       <dd>{new Date(entry.observedAt).toLocaleString()}</dd>
                     </div>
                   </dl>
                   {entry.providers.length > 0 && (
                     <div className="plugin-providers">
-                      <strong>Comic Providers</strong>
+                      <strong>漫画来源</strong>
                       <ul>
                         {entry.providers.map((provider) => (
                           <li key={provider.key}>
@@ -354,7 +354,7 @@ export function SourcePlugins() {
                   )}
                   {entry.bindingsRefreshRequired && (
                     <p className="refresh-required">
-                      Source Bindings require explicit refresh.
+                      来源绑定需要手动刷新。
                     </p>
                   )}
                 </li>

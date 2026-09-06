@@ -7,8 +7,25 @@ and an optional Suwayomi reading adapter.
 
 ## Start the application
 
-Prerequisites: Node.js 26, pnpm 10, and a locally installed Google Chrome for the
-browser acceptance check.
+Windows 日常使用：已安装 Node.js 26 和 pnpm 10 后，首次在项目目录运行
+`pnpm install --frozen-lockfile`，以后双击 `Start-Comic-Free.cmd`，或运行
+`pnpm start`。启动器检查环境、启动本地服务，并打开默认浏览器。
+
+页面按「书架 / 找漫画 / 阅读 / 设置」组织。首次进入「设置」保存本地
+Suwayomi JAR 路径、该文件已确认的 SHA-256、可选 HTTP 代理和内部端口，
+再按 `Ctrl+C` 停止启动器并重新双击启动，设置才会生效。配置在线来源还需
+Java 21 JDK；未配置时可先阅读内置示例漫画。程序不会自动下载运行时或扩展。
+
+在「找漫画」选择已安装的来源，打开漫画并「加入书架」；加入后阅读位置
+自动保存，可使用单页或连续阅读、键盘翻页、上一章和下一章。下次从书架继续。
+书架与设置保存在项目的 `.local-data`（可通过 `COMIC_FREE_DATA_DIR` 指定）。
+详细启动与故障说明见 [Windows 一键启动](docs/daily-reader-launch.md)。
+
+在线目录提供有效章节号时按章节号升序阅读；章节号缺失时保留来源目录顺序，
+可从章节列表选择。来源尚未配置或连接失败时，页面会显示当前状态与恢复入口。
+
+Development uses the same services without automatically opening a browser.
+Google Chrome is required only for the browser acceptance checks.
 
 ```powershell
 pnpm install

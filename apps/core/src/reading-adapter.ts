@@ -74,6 +74,11 @@ const CHAPTER: ReadingChapter = Object.freeze({
   label: "Chapter 1 · The Local Beginning",
 });
 
+const SECOND_CHAPTER: ReadingChapter = Object.freeze({
+  chapterKey: "chapter/two",
+  label: "Chapter 2 · Keep Reading",
+});
+
 const PAGE_KEYS = ["page/one", "page/two", "page/three"] as const;
 
 function createPage(label: string, background: string, accent: string): Buffer {
@@ -83,17 +88,20 @@ function createPage(label: string, background: string, accent: string): Buffer {
       `<path d="M80 180H720V1020H80Z" fill="${accent}" stroke="#17211b" stroke-width="18"/>` +
       `<circle cx="400" cy="465" r="190" fill="#f7f3e8" stroke="#17211b" stroke-width="18"/>` +
       `<path d="M260 485L350 575L555 350" fill="none" stroke="#17211b" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<text x="400" y="800" text-anchor="middle" font-family="sans-serif" font-size="76" font-weight="700" fill="#17211b">${label}</text>` +
+      `<text x="400" y="800" text-anchor="middle" font-family="sans-serif" font-size="${label.length > 15 ? 38 : 76}" font-weight="700" fill="#17211b">${label}</text>` +
       `<text x="400" y="875" text-anchor="middle" font-family="monospace" font-size="30" fill="#17211b">COMIC FREE FIXTURE</text>` +
       `</svg>`,
     "utf8",
   );
 }
 
-const PAGES: Readonly<Record<(typeof PAGE_KEYS)[number], Buffer>> = Object.freeze({
+const PAGES: Readonly<Record<string, Buffer>> = Object.freeze({
   "page/one": createPage("PAGE ONE", "#f3ead3", "#8fc9a3"),
   "page/two": createPage("PAGE TWO", "#f5b942", "#f7f3e8"),
   "page/three": createPage("PAGE THREE", "#8fb7d6", "#f3ead3"),
+  "chapter-two/page/one": createPage("CHAPTER TWO · PAGE ONE", "#f3ead3", "#8fc9a3"),
+  "chapter-two/page/two": createPage("CHAPTER TWO · PAGE TWO", "#f5b942", "#f7f3e8"),
+  "chapter-two/page/three": createPage("CHAPTER TWO · PAGE THREE", "#8fb7d6", "#f3ead3"),
 });
 
 export class FixtureReadingAdapter implements ReadingAdapter {
@@ -145,12 +153,13 @@ export class FixtureReadingAdapter implements ReadingAdapter {
 
   async getChapters(comicKey: string): Promise<ReadingChapter[]> {
     await this.getDetails(comicKey);
-    return [{ ...CHAPTER }];
+    return [{ ...CHAPTER }, { ...SECOND_CHAPTER }];
   }
 
   async resolveChapter(comicKey: string, chapterKey: string): Promise<ResolvedChapter> {
     const comic = await this.getDetails(comicKey);
-    if (chapterKey !== CHAPTER.chapterKey) {
+    const chapter = [CHAPTER, SECOND_CHAPTER].find(entry => entry.chapterKey === chapterKey);
+    if (!chapter) {
       throw new ReadingAdapterError(
         "chapter_not_found",
         "The requested chapter does not exist.",
@@ -158,9 +167,9 @@ export class FixtureReadingAdapter implements ReadingAdapter {
       );
     }
     return {
-      chapter: { ...CHAPTER },
+      chapter: { ...chapter },
       comic,
-      pageKeys: [...PAGE_KEYS],
+      pageKeys: PAGE_KEYS.map(key => chapterKey === SECOND_CHAPTER.chapterKey ? `chapter-two/${key}` : key),
     };
   }
 

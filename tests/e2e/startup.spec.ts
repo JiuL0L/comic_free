@@ -12,10 +12,18 @@ import {
 } from "@comic-free/contracts";
 import type { ChildProcess } from "node:child_process";
 import { fork } from "node:child_process";
+import { mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
+const RUNTIME_ROOT = path.join(
+  ROOT,
+  ".local-data",
+  "test-output",
+  "startup-e2e",
+  `runtime-${process.pid}`,
+);
 let application: ChildProcess;
 let startupOutput = "";
 
@@ -65,9 +73,14 @@ async function waitForPortRelease(port: number): Promise<void> {
 }
 
 test.beforeAll(async () => {
+  await rm(RUNTIME_ROOT, { recursive: true, force: true });
+  await mkdir(RUNTIME_ROOT, { recursive: true });
   application = fork(path.join(ROOT, "scripts", "start-dev.ts"), [], {
     cwd: ROOT,
-    env: process.env,
+    env: {
+      ...process.env,
+      COMIC_FREE_DATA_DIR: path.join(RUNTIME_ROOT, "data"),
+    },
     execArgv: ["--import", "tsx"],
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -83,6 +96,7 @@ test.afterAll(async () => {
     waitForPortRelease(LOCAL_CORE_PORT),
     waitForPortRelease(WEB_UI_PORT),
   ]);
+  await rm(RUNTIME_ROOT, { recursive: true, force: true });
 });
 
 test("shows starting, ready, failed, and recovered startup states", async ({ page }) => {
@@ -108,13 +122,13 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
 
   await page.goto("/");
   await healthRequestStarted;
-  await expect(page.getByRole("heading", { name: "Starting Comic Free" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "正在启动每日漫画" })).toBeVisible();
 
   releaseHealthRequest();
-  await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
   await expect(page.getByText("Local Core · API v1")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Plugin Host" })).toBeVisible();
-  await expect(page.getByText("Not configured")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "插件宿主状态" })).toBeVisible();
+  await expect(page.getByText("尚未配置")).toBeVisible();
 
   await page.route(PLUGIN_HOST_STATUS_URL, async (route) => {
     await route.fulfill({
@@ -129,7 +143,7 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
       status: 200,
     });
   });
-  await expect(page.getByText("Exited unexpectedly", { exact: true })).toBeVisible();
+  await expect(page.getByText("意外退出", { exact: true })).toBeVisible();
   await page.unroute(PLUGIN_HOST_STATUS_URL);
 
   await page.unroute(CORE_HEALTH_URL);
@@ -148,12 +162,12 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   });
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Comic Free could not start" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "每日漫画未能启动" })).toBeVisible();
   await expect(page.getByText("Local Core returned HTTP 503.")).toBeVisible();
 
   shouldFail = false;
-  await page.getByRole("button", { name: "Retry Local Core" }).click();
-  await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
+  await page.getByRole("button", { name: "重试 Local Core" }).click();
+  await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
 
   expect(browserFetches).toEqual(
     expect.arrayContaining([

@@ -8,17 +8,17 @@ import {
 } from "@comic-free/contracts";
 
 const labels: Record<PluginHostState, string> = {
-  early_exit: "Exited during startup",
-  invalid_path: "Invalid artifact",
-  not_configured: "Not configured",
-  port_occupied: "Port occupied",
-  ready: "Ready",
-  shutdown_failed: "Shutdown failed",
-  starting: "Starting",
-  stopped: "Stopped",
-  stopping: "Stopping",
-  unexpected_exit: "Exited unexpectedly",
-  startup_timeout: "Startup timed out",
+  early_exit: "启动时退出",
+  invalid_path: "文件无效",
+  not_configured: "尚未配置",
+  port_occupied: "端口已被占用",
+  ready: "运行中",
+  shutdown_failed: "停止失败",
+  starting: "正在启动",
+  stopped: "已停止",
+  stopping: "正在停止",
+  unexpected_exit: "意外退出",
+  startup_timeout: "启动超时",
 };
 
 type ViewState =
@@ -65,8 +65,8 @@ export function PluginHostStatus() {
   return (
     <section className="plugin-host" aria-labelledby="plugin-host-heading">
       <p className="eyebrow">RUNTIME / MANAGED PROCESS</p>
-      <h2 id="plugin-host-heading">Plugin Host</h2>
-      {state.kind === "loading" && <p className="summary">Reading lifecycle state…</p>}
+      <h2 id="plugin-host-heading">插件宿主状态</h2>
+      {state.kind === "loading" && <p className="summary">正在读取生命周期状态…</p>}
       {state.kind === "failed" && (
         <p className="guidance" role="alert">
           {state.message}
@@ -83,7 +83,7 @@ export function PluginHostStatus() {
           </div>
           <p className="summary">{state.status.message}</p>
           {state.status.internalPort !== null && (
-            <p className="guidance">Loopback internal port: {state.status.internalPort}</p>
+            <p className="guidance">回环内部端口：{state.status.internalPort}</p>
           )}
         </>
       )}

@@ -4,6 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.33.2",
   "scripts": {
+    "start": "tsx scripts/launch-reader.ts",
     "dev": "tsx scripts/start-dev.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config apps/web/vite.config.ts",

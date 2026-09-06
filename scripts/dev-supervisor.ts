@@ -134,10 +134,14 @@ function prefixOutput(child: ChildProcess, name: string): void {
   });
 }
 
-function startChild(root: string, spec: ChildCommand): ChildProcess {
+function startChild(
+  root: string,
+  spec: ChildCommand,
+  env: NodeJS.ProcessEnv,
+): ChildProcess {
   const child = spawn(spec.command, spec.args, {
     cwd: root,
-    env: process.env,
+    env,
     stdio: spec.gracefulShutdown ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -183,6 +187,7 @@ async function stopChild(child: ChildProcess, graceful = false): Promise<void> {
 
 export async function startDevelopment(
   root = path.resolve(import.meta.dirname, ".."),
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<DevelopmentController> {
   await ensurePortAvailable("Local Core", LOCAL_CORE_HOST, LOCAL_CORE_PORT);
   await ensurePortAvailable("Browser WebUI", WEB_UI_HOST, WEB_UI_PORT);
@@ -192,7 +197,7 @@ export async function startDevelopment(
     gracefulShutdown: true,
     command: process.execPath,
     args: ["--import", "tsx", "apps/core/src/main.ts"],
-  });
+  }, env);
   let web: ChildProcess | undefined;
   let stopping = false;
 
@@ -215,7 +220,7 @@ export async function startDevelopment(
         "--config",
         path.join(root, "apps", "web", "vite.config.ts"),
       ],
-    });
+    }, env);
 
     await waitForHttpReady({
       child: web,
