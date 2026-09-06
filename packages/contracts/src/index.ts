@@ -507,3 +507,4 @@ export function parseSourcePluginCatalogResponse(
 }
 
 export * from "./reading.ts";
+export * from "./settings.ts";

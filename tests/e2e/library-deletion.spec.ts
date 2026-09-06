@@ -88,22 +88,24 @@ test.afterAll(async () => {
 });
 
 test("confirms deletion, preserves on failure, retries and prevents stale reading writes", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("comic-free-reading-mode", "page"));
   await page.goto("/");
-  await page.getByLabel("Comic Provider", { exact: true }).selectOption("fixture:reader");
-  await page.getByLabel("Search query").fill("adventure");
-  await page.getByRole("button", { name: "Search catalog" }).click();
-  await page.getByRole("button", { name: "Open details" }).click();
-  await page.getByRole("button", { name: "Read Chapter 1 · The Local Beginning" }).click();
-  const reader = page.getByRole("region", { name: "Reader" });
-  const library = page.getByRole("region", { name: "Your Library" });
-  await reader.getByRole("button", { name: "Retain in Library" }).click();
-  await expect(library.getByRole("button", { name: "Delete from Library" })).toBeVisible();
+  await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
+  await page.getByLabel("搜索关键词").fill("adventure");
+  await page.getByRole("button", { name: "搜索漫画" }).click();
+  await page.getByRole("button", { name: "查看详情" }).click();
+  await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
+  const reader = page.getByRole("region", { name: "阅读器" });
+  await reader.getByRole("button", { name: "单页阅读" }).click();
+  const library = page.getByRole("region", { name: "书架" });
+  await reader.getByRole("button", { name: "加入书架" }).click();
+  await expect(library.getByRole("button", { name: "从书架删除" })).toBeVisible();
   const before = parseLibraryItemsResponse(await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json());
   const item = before.items[0]!;
   expect((await page.request.post(SOURCE_PLUGINS_REFRESH_URL)).status()).toBe(200);
   const catalogBefore = parseSourcePluginCatalogResponse(await (await page.request.get(SOURCE_PLUGINS_URL)).json());
   expect(catalogBefore.entries.some(entry => entry.pluginKey === "fixture:reader" && entry.status === "healthy" && entry.version === "1.0.0")).toBe(true);
-  await library.getByRole("button", { name: "Delete from Library" }).click();
+  await library.getByRole("button", { name: "从书架删除" }).click();
   const confirmation = page.getByRole("alertdialog", { name: "Delete Library Item" });
   await expect(confirmation).toContainText("Deterministic Adventure");
   await expect(confirmation).toContainText("Reading Progress");
@@ -115,7 +117,7 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
     if (route.request().method() !== "DELETE") return route.continue();
     await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "internal_error", message: "Deletion failed. Retry.", retryable: true } }) });
   });
-  await library.getByRole("button", { name: "Delete from Library" }).click();
+  await library.getByRole("button", { name: "从书架删除" }).click();
   await confirmation.getByRole("button", { name: "Confirm deletion" }).click();
   await expect(confirmation.getByRole("alert")).toHaveText("Deletion failed. Retry.");
   expect(await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json()).toEqual(before);
@@ -132,7 +134,7 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
     await route.fulfill({ response });
   });
   await confirmation.getByRole("button", { name: "Cancel" }).click();
-  await reader.getByRole("button", { name: "Next page" }).click();
+  await reader.getByRole("button", { name: "下一页" }).click();
   await progressStarted;
   let resumeReady!: () => void;
   const resumeStarted = new Promise<void>(resolve => { resumeReady = resolve; });
@@ -142,9 +144,9 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
     await oldGate;
     await route.fulfill({ response });
   });
-  await library.getByRole("button", { name: "Resume reading" }).click();
+  await library.getByRole("button", { name: "继续阅读" }).click();
   await resumeStarted;
-  await library.getByRole("button", { name: "Delete from Library" }).click();
+  await library.getByRole("button", { name: "从书架删除" }).click();
 
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -154,18 +156,18 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
   release();
   await expect(confirmation).not.toBeVisible();
   await expect(library.getByRole("status")).toContainText("Deleted Deterministic Adventure");
-  await expect(library.getByText("Your Library is empty.")).toBeVisible();
+  await expect(library.getByText("书架还是空的。")).toBeVisible();
   expect(parseSourcePluginCatalogResponse(await (await page.request.get(SOURCE_PLUGINS_URL)).json())).toEqual(catalogBefore);
   releaseOld();
   await page.unrouteAll({ behavior: "wait" });
   await expect(reader).not.toBeVisible();
-  await expect(page.getByText("Reading Progress saved", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("阅读进度已保存", { exact: true })).not.toBeVisible();
   expect(await (await page.request.put(`${target}/progress`, { data: { chapterKey: "chapter/one", chapterLabel: "Old", pageCount: 3, pageIndex: 1 } })).status()).toBe(404);
   expect(await (await page.request.post(`${LOCAL_CORE_ORIGIN}${READER_SESSIONS_PATH}`, { data: { libraryItemId: item.id } })).status()).toBe(404);
   await page.goto("about:blank");
   await stopApplication();
   await startApplication();
   await page.goto("/");
-  await expect(library.getByText("Your Library is empty.")).toBeVisible();
+  await expect(library.getByText("书架还是空的。")).toBeVisible();
   expect(await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json()).toEqual({ items: [] });
 });

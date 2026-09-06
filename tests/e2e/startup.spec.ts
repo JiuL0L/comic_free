@@ -108,13 +108,13 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
 
   await page.goto("/");
   await healthRequestStarted;
-  await expect(page.getByRole("heading", { name: "Starting Comic Free" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "正在启动每日漫画" })).toBeVisible();
 
   releaseHealthRequest();
-  await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
   await expect(page.getByText("Local Core · API v1")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Plugin Host" })).toBeVisible();
-  await expect(page.getByText("Not configured")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "插件宿主状态" })).toBeVisible();
+  await expect(page.getByText("尚未配置")).toBeVisible();
 
   await page.route(PLUGIN_HOST_STATUS_URL, async (route) => {
     await route.fulfill({
@@ -129,7 +129,7 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
       status: 200,
     });
   });
-  await expect(page.getByText("Exited unexpectedly", { exact: true })).toBeVisible();
+  await expect(page.getByText("意外退出", { exact: true })).toBeVisible();
   await page.unroute(PLUGIN_HOST_STATUS_URL);
 
   await page.unroute(CORE_HEALTH_URL);
@@ -148,12 +148,12 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   });
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Comic Free could not start" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "每日漫画未能启动" })).toBeVisible();
   await expect(page.getByText("Local Core returned HTTP 503.")).toBeVisible();
 
   shouldFail = false;
-  await page.getByRole("button", { name: "Retry Local Core" }).click();
-  await expect(page.getByRole("heading", { name: "Comic Free is ready" })).toBeVisible();
+  await page.getByRole("button", { name: "重试 Local Core" }).click();
+  await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
 
   expect(browserFetches).toEqual(
     expect.arrayContaining([

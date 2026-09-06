@@ -18,7 +18,7 @@ async function exerciseCatalog(adapter: ReadingAdapter): Promise<void> {
   const details = await adapter.getDetails(result.comicKey);
   assert.equal(details.comicProviderKey, "fixture.provider");
   const chapters = await adapter.getChapters(result.comicKey);
-  assert.deepEqual(chapters.map((chapter) => chapter.chapterKey), ["chapter/one"]);
+  assert.deepEqual(chapters.map((chapter) => chapter.chapterKey), ["chapter/one", "chapter/two"]);
 
   const resolution = await adapter.resolveChapter(
     result.comicKey,
@@ -30,6 +30,15 @@ async function exerciseCatalog(adapter: ReadingAdapter): Promise<void> {
 
 test("fixture implements the replaceable reading catalog interface", async () => {
   await exerciseCatalog(new FixtureReadingAdapter());
+});
+
+test("a second fixture chapter resolves independently for cross-chapter resume", async () => {
+  const adapter = new FixtureReadingAdapter();
+  const resolution = await adapter.resolveChapter("comic/deterministic-adventure", "chapter/two");
+  assert.equal(resolution.chapter.chapterKey, "chapter/two");
+  assert.equal(resolution.pageKeys.length, 3);
+  const page = await adapter.readPage(resolution.pageKeys[0]!);
+  assert.match(page.bytes.toString("utf8"), /CHAPTER TWO/);
 });
 test("fixture returns recognizable, stable, non-transparent image bytes", async () => {
   const adapter = new FixtureReadingAdapter();

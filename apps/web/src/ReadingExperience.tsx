@@ -139,7 +139,20 @@ export function ReadingExperience() {
     | { height: number; kind: "ready"; width: number }
     | { kind: "failed" }
   >({ kind: "loading" });
-  const [retainedId, setRetainedId] = useState<string | null>(null);
+  const [pageLoadStates, setPageLoadStates] = useState<Record<number, "failed" | "ready">>({});
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">(
+    () => window.localStorage.getItem("comic-free-reading-mode") === "page" ? "page" : "scroll",
+  );
+  const [fitWidth, setFitWidth] = useState(
+    () => window.localStorage.getItem("comic-free-fit-width") !== "false",
+  );
+  const [retainedId, setRetainedIdState] = useState<string | null>(null);
+  const retainedIdRef = useRef<string | null>(null);
+  const setRetainedId = (value: string | null | ((current: string | null) => string | null)) => {
+    // A scroll callback can run before React replaces its event listener.
+    retainedIdRef.current = typeof value === "function" ? value(retainedIdRef.current) : value;
+    setRetainedIdState(retainedIdRef.current);
+  };
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [libraryAttempt, setLibraryAttempt] = useState(0);
   const [library, setLibrary] = useState<LibraryState>({ kind: "loading" });
@@ -156,6 +169,22 @@ export function ReadingExperience() {
   const detailsRequest = useRef(0);
   const readerRequest = useRef(0);
   const deletedIds = useRef(new Set<string>());
+  const libraryItems = useRef<LibraryItem[]>([]);
+  const activeReaderId = useRef<string | null>(null);
+  const progressRequest = useRef(0);
+  const progressQueue = useRef(Promise.resolve());
+  const scrollReady = useRef(false);
+  const scrollAnchorPending = useRef(false);
+  const scrollAnchorPage = useRef(0);
+  const viewedPage = useRef(0);
+  const pageLoadStatesRef = useRef(pageLoadStates);
+  const [anchorVersion, setAnchorVersion] = useState(0);
+  const [scrollTrackingVersion, setScrollTrackingVersion] = useState(0);
+
+  useEffect(() => { window.localStorage.setItem("comic-free-reading-mode", readingMode); }, [readingMode]);
+  useEffect(() => { window.localStorage.setItem("comic-free-fit-width", String(fitWidth)); }, [fitWidth]);
+  useEffect(() => { if (library.kind === "loaded") libraryItems.current = library.items; }, [library]);
+  useEffect(() => { pageLoadStatesRef.current = pageLoadStates; }, [pageLoadStates]);
 
   useEffect(() => {
     if (deleteTarget) deleteDialog.current?.showModal();
@@ -177,6 +206,8 @@ export function ReadingExperience() {
       if (response.deletedId !== target.id) throw new Error("Unexpected deletion response. Reload Library to check its state.");
       deletedIds.current.add(target.id);
       readingGeneration.current += 1;
+      if (reader?.sourcePluginKey === target.sourceBinding.sourcePluginKey && reader.comicKey === target.sourceBinding.durableComicKey) activeReaderId.current = null;
+      progressRequest.current += 1;
       setLibrary(current => current.kind === "loaded"
         ? { kind: "loaded", items: current.items.filter(item => item.id !== target.id) }
         : current);
@@ -343,13 +374,73 @@ export function ReadingExperience() {
     }
   };
 
+  const saveProgress = async (
+    libraryItemId: string,
+    session: ReaderSessionResponse["session"],
+    nextPageIndex: number,
+    rollback?: () => void,
+  ) => {
+    const request = ++progressRequest.current;
+    const write = progressQueue.current.then(() => requestJson(
+        `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}/${encodeURIComponent(libraryItemId)}/progress`,
+        json("PUT", {
+          chapterKey: session.chapterKey,
+          chapterLabel: session.chapterLabel,
+          pageCount: session.pageCount,
+          pageIndex: nextPageIndex,
+        }),
+        parseLibraryItemResponse,
+      ));
+    progressQueue.current = write.then(() => undefined, () => undefined);
+    try {
+      await write;
+      if (activeReaderId.current !== session.id || request !== progressRequest.current) return;
+      setSaveMessage("阅读进度已保存");
+      setLibraryAttempt((value) => value + 1);
+    } catch (error) {
+      if (activeReaderId.current !== session.id || request !== progressRequest.current) return;
+      rollback?.();
+      setSaveMessage(error instanceof Error ? `阅读进度未保存：${error.message}` : "阅读进度未保存，请重试。");
+      setLibraryAttempt((value) => value + 1);
+    }
+  };
+
+  const loadReaderDetails = async (session: ReaderSessionResponse["session"]) => {
+    const generation = readingGeneration.current;
+    const request = ++detailsRequest.current;
+    setDetails({ kind: "loading" });
+    try {
+      const [comic, chapters] = await Promise.all([
+        requestJson(comicDetailsUrl(session.sourcePluginKey, session.comicKey), undefined, parseComicDetailsResponse),
+        requestJson(comicChaptersUrl(session.sourcePluginKey, session.comicKey), undefined, parseCatalogChaptersResponse),
+      ]);
+      if (generation !== readingGeneration.current || request !== detailsRequest.current || activeReaderId.current !== session.id) return;
+      setDetails({ kind: "success", comic: comic.comic, chapters: chapters.items });
+    } catch (error) {
+      if (generation !== readingGeneration.current || request !== detailsRequest.current || activeReaderId.current !== session.id) return;
+      setDetails({ kind: "failed", error: error instanceof Error ? error.message : "无法加载章节列表。" });
+    }
+  };
+
   const acceptSession = (session: ReaderSessionResponse["session"]) => {
+    const existing = libraryItems.current.find((item) =>
+      !deletedIds.current.has(item.id)
+      && item.sourceBinding.sourcePluginKey === session.sourcePluginKey
+      && item.sourceBinding.durableComicKey === session.comicKey,
+    );
+    activeReaderId.current = session.id;
+    scrollReady.current = false;
+    scrollAnchorPending.current = true;
+    scrollAnchorPage.current = session.pageIndex;
+    viewedPage.current = session.pageIndex;
     setReader(session);
     setPageIndex(session.pageIndex);
     setImageAttempt(0);
     setImageState({ kind: "loading" });
-    setRetainedId(null);
+    setPageLoadStates({});
+    setRetainedId(existing?.id ?? null);
     setSaveMessage(null);
+    if (existing) void saveProgress(existing.id, session, session.pageIndex);
   };
 
   const openChapter = async (chapterKey: string) => {
@@ -390,6 +481,7 @@ export function ReadingExperience() {
       if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       acceptSession(response.session);
       setRetainedId(item.id);
+      void loadReaderDetails(response.session);
       setResumeStates((states) => ({ ...states, [item.id]: { kind: "success" } }));
     } catch (error) {
       if (generation !== readingGeneration.current || request !== readerRequest.current) return;
@@ -479,65 +571,139 @@ export function ReadingExperience() {
   const retain = async () => {
     if (!reader) return;
     const generation = readingGeneration.current;
+    const sessionId = reader.id;
     try {
       const response = await requestJson(
         `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`,
         json("POST", { pageIndex, sessionId: reader.id }),
         parseLibraryItemResponse,
       );
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || activeReaderId.current !== sessionId) return;
+      libraryItems.current = [
+        ...libraryItems.current.filter((item) => item.id !== response.item.id),
+        response.item,
+      ];
+      setLibrary((current) => current.kind === "loaded"
+        ? { kind: "loaded", items: libraryItems.current }
+        : current);
       setRetainedId(response.item.id);
-      setSaveMessage("Saved to Library");
+      setSaveMessage("已加入书架");
+      if (response.item.progress.chapterKey !== reader.chapterKey || response.item.progress.pageIndex !== viewedPage.current) {
+        void saveProgress(response.item.id, reader, viewedPage.current);
+      }
       setLibraryAttempt((value) => value + 1);
     } catch (error) {
-      if (generation !== readingGeneration.current) return;
+      if (generation !== readingGeneration.current || activeReaderId.current !== sessionId) return;
       setSaveMessage(error instanceof Error ? error.message : "The comic could not be retained.");
     }
   };
 
   const movePage = async (nextPageIndex: number) => {
-    if (!reader || nextPageIndex < 0 || nextPageIndex >= reader.pageCount) return;
+    if (!reader || activeReaderId.current !== reader.id || nextPageIndex < 0 || nextPageIndex >= reader.pageCount) return;
     const previousPageIndex = pageIndex;
+    viewedPage.current = nextPageIndex;
     setPageIndex(nextPageIndex);
-    setImageState({ kind: "loading" });
+    if (readingMode === "page") setImageState({ kind: "loading" });
     setSaveMessage(null);
-    if (!retainedId) return;
-    const generation = readingGeneration.current;
-    try {
-      await requestJson(
-        `${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}/${encodeURIComponent(retainedId)}/progress`,
-        json("PUT", {
-          chapterKey: reader.chapterKey,
-          chapterLabel: reader.chapterLabel,
-          pageCount: reader.pageCount,
-          pageIndex: nextPageIndex,
-        }),
-        parseLibraryItemResponse,
-      );
-      if (generation !== readingGeneration.current) return;
-      setSaveMessage("Reading Progress saved");
-      setLibraryAttempt((value) => value + 1);
-    } catch (error) {
-      if (generation !== readingGeneration.current) return;
+    const libraryItemId = retainedIdRef.current;
+    if (!libraryItemId) return;
+    await saveProgress(libraryItemId, reader, nextPageIndex, readingMode === "page" ? () => {
       setPageIndex(previousPageIndex);
       setImageState({ kind: "loading" });
-      setSaveMessage(
-        error instanceof Error ? error.message : "Reading Progress could not be saved.",
-      );
-      setLibraryAttempt((value) => value + 1);
-    }
+    } : undefined);
   };
+
+  const requestScrollAnchor = (nextPageIndex: number) => {
+    scrollReady.current = false;
+    scrollAnchorPending.current = true;
+    scrollAnchorPage.current = nextPageIndex;
+    viewedPage.current = nextPageIndex;
+    setAnchorVersion((version) => version + 1);
+  };
+
+  const navigateScroll = (nextPageIndex: number) => {
+    if (!reader || nextPageIndex < 0 || nextPageIndex >= reader.pageCount) return;
+    requestScrollAnchor(nextPageIndex);
+    void movePage(nextPageIndex);
+  };
+
+  useEffect(() => {
+    if (!reader || readingMode !== "scroll" || !scrollReady.current) return;
+    let frame: number | null = null;
+    const trackVisiblePage = () => {
+      frame = null;
+      if (!scrollReady.current) return;
+      const line = window.innerHeight * 0.15;
+      const currentPage = Array.from(document.querySelectorAll<HTMLElement>(".reader-page[data-page-index]"))
+        .map((element) => ({ element, index: Number(element.dataset.pageIndex) }))
+        .filter(({ element, index }) => pageLoadStatesRef.current[index] === "ready" && element.getBoundingClientRect().top <= line)
+        .reduce<number | null>((current, candidate) => current === null || candidate.index > current ? candidate.index : current, null);
+      if (currentPage === null || currentPage === viewedPage.current) return;
+      viewedPage.current = currentPage;
+      scrollAnchorPage.current = currentPage;
+      void movePage(currentPage);
+    };
+    const scheduleVisiblePage = () => {
+      frame ??= window.requestAnimationFrame(trackVisiblePage);
+    };
+    window.addEventListener("scroll", scheduleVisiblePage, { passive: true });
+    window.addEventListener("resize", scheduleVisiblePage);
+    scheduleVisiblePage();
+    return () => {
+      window.removeEventListener("scroll", scheduleVisiblePage);
+      window.removeEventListener("resize", scheduleVisiblePage);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [scrollTrackingVersion, pageLoadStates, reader, readingMode, retainedId]);
+
+  useEffect(() => {
+    if (!reader || readingMode !== "scroll") return;
+    if (!scrollAnchorPending.current) return;
+    scrollReady.current = false;
+    const targetPage = scrollAnchorPage.current;
+    const layoutReady = Array.from({ length: targetPage + 1 }, (_, index) => pageLoadStates[index])
+      .every((state) => state === "ready" || state === "failed");
+    if (!layoutReady) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-reader-page][data-page-index='${targetPage}']`)?.scrollIntoView({ block: "start", behavior: "auto" });
+      scrollReady.current = true;
+      scrollAnchorPending.current = false;
+      setScrollTrackingVersion(version => version + 1);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [anchorVersion, pageLoadStates, reader?.id, readingMode]);
+
+  useEffect(() => {
+    if (!reader) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      if ((document.activeElement as HTMLElement | null)?.closest("#settings, #library")) return;
+      if (["ArrowDown", "ArrowRight", "PageDown"].includes(event.key)) {
+        event.preventDefault();
+        if (readingMode === "scroll") navigateScroll(Math.min(scrollAnchorPage.current + 1, reader.pageCount - 1));
+        else void movePage(pageIndex + 1);
+      }
+      if (["ArrowUp", "ArrowLeft", "PageUp"].includes(event.key)) {
+        event.preventDefault();
+        if (readingMode === "scroll") navigateScroll(Math.max(scrollAnchorPage.current - 1, 0));
+        else void movePage(pageIndex - 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pageIndex, reader, readingMode, retainedId]);
 
   return (
     <>
-      <section className="reading-panel" aria-labelledby="find-comic-heading">
+      <section id="discover" className="reading-panel" aria-labelledby="find-comic-heading">
         <p className="eyebrow">READ / COMIC CATALOG</p>
-        <h2 id="find-comic-heading">Find a comic</h2>
+        <h2 id="find-comic-heading">找漫画</h2>
         <div className="search-controls">
           <label>
-            Comic Provider
+            漫画来源
             <select
-              aria-label="Comic Provider"
+              aria-label="漫画来源"
               value={providerSelection}
               onChange={(event) => {
                 readingGeneration.current += 1;
@@ -547,21 +713,22 @@ export function ReadingExperience() {
                 setReader(null);
               }}
             >
-              <option value="">Choose a Comic Provider</option>
+              <option value="">选择漫画来源</option>
               {providers.items.map((provider) => (
                 <option
                   key={JSON.stringify([provider.sourcePluginKey, provider.comicProviderKey])}
                   disabled={!provider.available}
                   value={providerOptionValue(provider)}
                 >
-                  {providerLabel(provider)}{provider.available ? "" : " — unavailable"}
+                  {providerLabel(provider)}{provider.available ? "" : " — 不可用"}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Search query
+            搜索关键词
             <input
+              aria-label="搜索关键词"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -570,31 +737,31 @@ export function ReadingExperience() {
             />
           </label>
           <button type="button" disabled={!selectedProvider?.available || !query.trim() || search.kind === "loading"} onClick={() => void runSearch()}>
-            Search catalog
+            搜索漫画
           </button>
         </div>
 
         {providers.kind === "loading" && providers.items.length === 0 && (
-          <p className="reading-notice">Loading installed Comic Providers…</p>
+          <p className="reading-notice">正在加载漫画来源…</p>
         )}
         {providers.kind === "empty" && (
-          <p className="reading-notice">No installed Comic Providers are available.</p>
+          <p className="reading-notice">暂无可用的漫画来源。</p>
         )}
         {providers.kind === "error" && (
           <div className="reading-notice error" role="alert">
-            <span>{providers.message ?? "Installed Comic Providers could not be loaded."}</span>
+            <span>{providers.message ?? "漫画来源加载失败。"}</span>
             <button type="button" onClick={() => setProviderRefreshAttempt((attempt) => attempt + 1)}>
-              Retry Comic Providers
+              重试来源加载
             </button>
           </div>
         )}
 
-        {search.kind === "loading" && <p className="reading-notice">Searching {selectedProvider ? providerLabel(selectedProvider) : "Comic Provider"}…</p>}
-        {search.kind === "empty" && <p className="reading-notice">No comics matched this search.</p>}
+        {search.kind === "loading" && <p className="reading-notice">正在搜索 {selectedProvider ? providerLabel(selectedProvider) : "漫画来源"}…</p>}
+        {search.kind === "empty" && <p className="reading-notice">没有找到匹配的漫画。</p>}
         {search.kind === "failed" && (
           <div className="reading-notice error" role="alert">
             <span>{search.error.message}</span>
-            {search.error.retryable && <button type="button" onClick={() => void runSearch()}>Retry search</button>}
+            {search.error.retryable && <button type="button" onClick={() => void runSearch()}>重新搜索</button>}
           </div>
         )}
         {search.kind === "success" && (
@@ -605,13 +772,13 @@ export function ReadingExperience() {
                   <strong>{item.title}</strong>
                   <span>{item.sourcePluginName}</span>
                 </div>
-                <button type="button" onClick={() => void openDetails(item)}>Open details</button>
+                <button type="button" onClick={() => void openDetails(item)}>查看详情</button>
               </li>
             ))}
           </ul>
         )}
 
-        {details.kind === "loading" && <p className="reading-notice">Loading comic details…</p>}
+        {details.kind === "loading" && <p className="reading-notice">正在加载漫画详情…</p>}
         {details.kind === "failed" && <p className="reading-notice error" role="alert">{details.error}</p>}
         {details.kind === "success" && (
           <article className="comic-details">
@@ -620,7 +787,7 @@ export function ReadingExperience() {
             <p>{details.comic.description}</p>
             {details.chapters.map((chapter) => (
               <button key={chapter.chapterKey} type="button" onClick={() => void openChapter(chapter.chapterKey)}>
-                Read {chapter.label}
+                阅读 {chapter.label}
               </button>
             ))}
           </article>
@@ -628,59 +795,75 @@ export function ReadingExperience() {
       </section>
 
       {reader && (
-        <section className="reader" role="region" aria-label="Reader">
+        <section id="reader" className={`reader ${fitWidth ? "fit-width" : "fit-page"}`} role="region" aria-label="阅读器">
           <div className="reader-context">
             <div>
               <p className="eyebrow">{reader.sourcePluginName}</p>
               <h2>{reader.title}</h2>
               <p>{reader.chapterLabel}</p>
             </div>
-            <strong>Page {pageIndex + 1} of {reader.pageCount}</strong>
+            <strong>第 {pageIndex + 1} / {reader.pageCount} 页</strong>
           </div>
-          <div className="page-frame">
-            {imageState.kind === "loading" && <p>Loading page…</p>}
-            <img
-              alt={`${reader.title} — page ${pageIndex + 1} of ${reader.pageCount}`}
+          <div className={`page-frame ${readingMode === "scroll" ? "vertical-pages" : ""}`}>
+            {readingMode === "page" && imageState.kind === "loading" && <p>正在加载页面…</p>}
+            {readingMode === "page" && <img
+              alt={`${reader.title}，第 ${pageIndex + 1} / ${reader.pageCount} 页`}
               key={`${reader.id}:${pageIndex}:${imageAttempt}`}
               src={`${readerPageUrl(reader.id, pageIndex)}?attempt=${imageAttempt}`}
               onError={() => setImageState({ kind: "failed" })}
-              onLoad={(event) =>
-                setImageState({
-                  kind: "ready",
-                  height: event.currentTarget.naturalHeight,
-                  width: event.currentTarget.naturalWidth,
-                })
-              }
-            />
-            {imageState.kind === "ready" && <p>Rendered {imageState.width} × {imageState.height}</p>}
-            {imageState.kind === "failed" && (
+              onLoad={(event) => setImageState({ kind: "ready", height: event.currentTarget.naturalHeight, width: event.currentTarget.naturalWidth })}
+            />}
+            {readingMode === "page" && imageState.kind === "ready" && <p>已渲染 {imageState.width} × {imageState.height}</p>}
+            {readingMode === "scroll" && Array.from({ length: reader.pageCount }, (_, index) => (
+              <div key={`${reader.id}:${index}`} className="reader-page-wrap">
+                <div className="reader-page-marker" data-reader-page data-page-index={index} aria-hidden="true" />
+                <figure className="reader-page" data-page-index={index}>
+                <img
+                  alt={`${reader.title}，第 ${index + 1} / ${reader.pageCount} 页`}
+                  loading={index <= scrollAnchorPage.current + 1 ? "eager" : "lazy"}
+                  src={`${readerPageUrl(reader.id, index)}?attempt=${imageAttempt}`}
+                  onLoad={() => setPageLoadStates(states => ({ ...states, [index]: "ready" }))}
+                  onError={() => setPageLoadStates(states => ({ ...states, [index]: "failed" }))}
+                />
+                {pageLoadStates[index] === "failed" && <figcaption role="alert">此页未加载，可重试或刷新阅读会话。<button type="button" onClick={() => setImageAttempt(value => value + 1)}>重试页面</button><button type="button" onClick={() => void renewReaderSession()}>刷新阅读会话</button></figcaption>}
+                </figure>
+              </div>
+            ))}
+            {readingMode === "page" && imageState.kind === "failed" && (
               <div className="reading-notice error" role="alert">
-                <span>The page could not be loaded. Your reader context was preserved.</span>
+                <span>页面未加载，但阅读上下文已保留。</span>
                 <button type="button" onClick={() => { setImageState({ kind: "loading" }); setImageAttempt((value) => value + 1); }}>
-                  Retry page
+                  重试页面
                 </button>
                 <button type="button" onClick={() => void renewReaderSession()}>
-                  Renew reader session
+                  刷新阅读会话
                 </button>
               </div>
             )}
           </div>
-          <div className="reader-actions">
-            <button type="button" disabled={pageIndex === 0} onClick={() => void movePage(pageIndex - 1)}>Previous page</button>
-            <button type="button" disabled={Boolean(retainedId) || deleting} onClick={() => void retain()}>Retain in Library</button>
-            <button type="button" disabled={pageIndex === reader.pageCount - 1} onClick={() => void movePage(pageIndex + 1)}>Next page</button>
+          <div className="reader-tools">
+            <button type="button" aria-pressed={readingMode === "scroll"} onClick={() => { setReadingMode("scroll"); requestScrollAnchor(pageIndex); }}>连续滚动</button>
+            <button type="button" aria-pressed={readingMode === "page"} onClick={() => setReadingMode("page")}>单页阅读</button>
+            <button type="button" aria-pressed={fitWidth} onClick={() => { setFitWidth(value => !value); if (readingMode === "scroll") requestScrollAnchor(pageIndex); }}>{fitWidth ? "适合宽度" : "适合页面"}</button>
           </div>
+          <div className="reader-actions">
+            <button type="button" disabled={pageIndex === 0} onClick={() => readingMode === "scroll" ? navigateScroll(pageIndex - 1) : void movePage(pageIndex - 1)}>上一页</button>
+            <button type="button" disabled={Boolean(retainedId) || deleting} onClick={() => void retain()}>{retainedId ? "已加入书架" : "加入书架"}</button>
+            <button type="button" disabled={pageIndex === reader.pageCount - 1} onClick={() => readingMode === "scroll" ? navigateScroll(pageIndex + 1) : void movePage(pageIndex + 1)}>下一页</button>
+          </div>
+          {details.kind === "success" && (() => { const chapterIndex = details.chapters.findIndex(chapter => chapter.chapterKey === reader.chapterKey); return <div className="reader-chapters"><button type="button" disabled={chapterIndex <= 0} onClick={() => void openChapter(details.chapters[chapterIndex - 1]!.chapterKey)}>上一话</button><button type="button" disabled={chapterIndex < 0 || chapterIndex >= details.chapters.length - 1} onClick={() => void openChapter(details.chapters[chapterIndex + 1]!.chapterKey)}>下一话</button></div>; })()}
           {saveMessage && <p className="save-message" role="status">{saveMessage}</p>}
+          {retainedId && saveMessage?.startsWith("阅读进度未保存") && <button type="button" onClick={() => void saveProgress(retainedId, reader, pageIndex)}>重试保存当前位置</button>}
         </section>
       )}
 
-      <section className="library-panel" role="region" aria-label="Your Library">
+      <section id="library" className="library-panel" role="region" aria-label="书架">
         <div className="section-heading">
           <div>
             <p className="eyebrow">LOCAL / RETAINED STATE</p>
-            <h2>Your Library</h2>
+            <h2>书架</h2>
           </div>
-          <button type="button" disabled={library.kind === "loading"} onClick={() => setLibraryAttempt((value) => value + 1)}>Reload Library</button>
+          <button type="button" disabled={library.kind === "loading"} onClick={() => setLibraryAttempt((value) => value + 1)}>刷新书架</button>
         </div>
         {deleteMessage && <p role="status" className="reading-notice">{deleteMessage}</p>}
         <dialog ref={deleteDialog} role="alertdialog" aria-label="Delete Library Item" aria-describedby="delete-library-description" onCancel={event => { event.preventDefault(); if (!deleting) setDeleteTarget(null); }}>
@@ -692,12 +875,12 @@ export function ReadingExperience() {
             <button type="button" disabled={deleting} onClick={() => void deleteItem()}>{deleting ? "Deleting…" : "Confirm deletion"}</button>
           </div>
         </dialog>
-        {library.kind === "loading" && <p className="reading-notice">Loading your Library…</p>}
+        {library.kind === "loading" && <p className="reading-notice">正在加载书架…</p>}
         {library.kind === "failed" && <p className="reading-notice error" role="alert">{library.error}</p>}
-        {library.kind === "loaded" && library.items.length === 0 && <p className="reading-notice">Your Library is empty.</p>}
+        {library.kind === "loaded" && library.items.length === 0 && <p className="reading-notice">书架还是空的。</p>}
         {library.kind === "loaded" && library.items.length > 0 && (
           <ul className="library-list">
-            {library.items.map((item) => {
+            {library.items.toSorted((left, right) => right.progress.updatedAt.localeCompare(left.progress.updatedAt)).map((item) => {
               const resumeState = resumeStates[item.id] ?? { kind: "idle" as const };
               const refreshState = refreshStates[item.sourceBinding.id] ?? { kind: "idle" as const };
               return (
@@ -705,28 +888,28 @@ export function ReadingExperience() {
                 <div>
                   <h3>{item.snapshot.title}</h3>
                   <p>{item.progress.chapterLabel}</p>
-                  <p>Page {item.progress.pageIndex + 1} of {item.progress.pageCount}</p>
+                  <p>第 {item.progress.pageIndex + 1} / {item.progress.pageCount} 页</p>
                   <span className={`availability ${item.sourceBinding.availability}`}>
                     {item.sourceBinding.availability === "available"
-                      ? "Available"
+                      ? "可阅读"
                       : item.sourceBinding.availability === "refresh_required"
-                        ? "Source Binding refresh required"
+                        ? "需要刷新来源绑定"
                         : reasonLabels[item.sourceBinding.reasonCode ?? "unknown"]}
                   </span>
                   {resumeState.kind === "pending" && (
-                    <p className="action-state" role="status">Resuming reading…</p>
+                    <p className="action-state" role="status">正在恢复阅读…</p>
                   )}
                   {resumeState.kind === "success" && (
-                    <p className="action-state success" role="status">Reading resumed.</p>
+                    <p className="action-state success" role="status">已恢复阅读。</p>
                   )}
                   {resumeState.kind === "failed" && (
                     <p className="action-state error" role="alert">{resumeState.error}</p>
                   )}
                   {refreshState.kind === "pending" && (
-                    <p className="action-state" role="status">Refreshing Source Binding…</p>
+                    <p className="action-state" role="status">正在刷新来源绑定…</p>
                   )}
                   {refreshState.kind === "success" && (
-                    <p className="action-state success" role="status">Source Binding refreshed. Resume reading when ready.</p>
+                    <p className="action-state success" role="status">来源绑定已刷新，可以恢复阅读。</p>
                   )}
                   {refreshState.kind === "failed" && (
                     <p className="action-state error" role="alert">{refreshState.error}</p>
@@ -740,10 +923,10 @@ export function ReadingExperience() {
                       onClick={() => void resume(item)}
                     >
                       {resumeState.kind === "pending"
-                        ? "Resuming reading…"
+                        ? "正在恢复阅读…"
                         : resumeState.kind === "failed"
-                          ? "Retry Resume"
-                          : "Resume reading"}
+                          ? "重试恢复"
+                          : "继续阅读"}
                     </button>
                   )}
                   {item.sourceBinding.availability !== "available" && (
@@ -753,10 +936,10 @@ export function ReadingExperience() {
                       onClick={() => void refreshSourceBinding(item)}
                     >
                       {refreshState.kind === "pending"
-                        ? "Refreshing Source Binding…"
+                        ? "正在刷新来源绑定…"
                         : refreshState.kind === "failed"
-                          ? "Retry refresh"
-                      : "Refresh Source Binding"}
+                          ? "重试刷新"
+                      : "刷新来源绑定"}
                     </button>
                   )}
                   <button
@@ -764,7 +947,7 @@ export function ReadingExperience() {
                     disabled={deleting}
                     onClick={() => { setDeleteError(null); setDeleteTarget(item); }}
                   >
-                    Delete from Library
+                    从书架删除
                   </button>
                 </div>
               </li>

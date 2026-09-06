@@ -18,12 +18,15 @@ import { createReadingHttpHandler } from "./reading-http.ts";
 import type { ReadingService } from "./reading-service.ts";
 import { createSourcePluginChangeHttpHandler } from "./source-plugin-change-http.ts";
 import type { SourcePluginChangeService } from "./source-plugin-change.ts";
+import { createSettingsHttpHandler } from "./settings-http.ts";
+import type { SettingsService } from "./settings.ts";
 
 export interface LocalCoreServerOptions {
   adapter: CatalogAdapter;
   catalogStore: CatalogStore;
   pluginHostStatus?: () => PluginHostStatusResponse;
   readingService?: ReadingService;
+  settingsService?: SettingsService;
   sourcePluginChangeService?: SourcePluginChangeService;
 }
 
@@ -99,6 +102,7 @@ export function createLocalCoreServer({
   catalogStore,
   pluginHostStatus,
   readingService,
+  settingsService,
   sourcePluginChangeService,
 }: LocalCoreServerOptions) {
   const handleReading = readingService
@@ -106,6 +110,9 @@ export function createLocalCoreServer({
     : null;
   const handleSourcePluginChange = sourcePluginChangeService
     ? createSourcePluginChangeHttpHandler(sourcePluginChangeService)
+    : null;
+  const handleSettings = settingsService
+    ? createSettingsHttpHandler(settingsService)
     : null;
 
   return createServer((request, response) => {
@@ -131,6 +138,18 @@ export function createLocalCoreServer({
       writeJson(response, 200, pluginHostStatus?.() ?? NOT_CONFIGURED);
       return;
     }
+
+    if (handleSettings) {
+      void handleSettings(request, response).then((handled) => {
+        if (!handled) routeRequest(request, response);
+      });
+      return;
+    }
+
+    routeRequest(request, response);
+  });
+
+  function routeRequest(request: import("node:http").IncomingMessage, response: ServerResponse): void {
 
     if (request.method === "GET" && request.url === SOURCE_PLUGINS_PATH) {
       writeJson(response, 200, catalogStore.readCatalog());
@@ -165,7 +184,7 @@ export function createLocalCoreServer({
     }
 
     writeNotFound(response);
-  });
+  }
 }
 
 function writeNotFound(response: ServerResponse): void {
