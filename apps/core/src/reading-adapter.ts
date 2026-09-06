@@ -202,7 +202,7 @@ export class FixtureReadingAdapter implements ReadingAdapter {
       );
     }
     return {
-      bytes: this.comicProviderKey === "fixture.provider" ? Buffer.from(bytes) : Buffer.from(bytes.toString("utf8").replace("COMIC FREE FIXTURE", "COMIC FREE FR FIXTURE"), "utf8"),
+      bytes: this.comicProviderKey === "fixture.provider" ? Buffer.from(bytes) : Buffer.from(bytes.toString("utf8").replace("COMIC FREE FIXTURE", "COMIC FREE ZH-HANT FIXTURE"), "utf8"),
       contentType: "image/svg+xml; charset=utf-8",
     };
   }

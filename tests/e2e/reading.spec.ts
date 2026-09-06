@@ -98,6 +98,35 @@ test.afterAll(async () => {
   await rm(RUNTIME_ROOT, { recursive: true, force: true });
 });
 
+test("shows Simplified Chinese, Traditional Chinese, then English provider options only", async ({ page }) => {
+  const languages = ["fr", "en", "zh-Hant", "ja", "zh-Hans"];
+  await page.route("**/api/v1/reading/providers", async (route) => {
+    await route.fulfill({
+      json: {
+        items: languages.map((language) => ({
+          available: true,
+          comicProviderKey: `provider:v1:MangaDex:${language}`,
+          language,
+          name: "MangaDex",
+          sourcePluginKey: "mihon:mangadex",
+          sourcePluginName: "MangaDex",
+        })),
+        message: null,
+        state: "success",
+      },
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByLabel("漫画来源", { exact: true }).locator("option")).toHaveText([
+    "选择漫画来源",
+    "MangaDex / MangaDex（简体中文）",
+    "MangaDex / MangaDex（繁体中文）",
+    "MangaDex / MangaDex（英语）",
+  ]);
+});
+
 test("loads every source catalog page as clickable covers and opens the selected comic", async ({ page }) => {
   const installed = await page.request.post(
     `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
@@ -183,7 +212,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   await expect(searchButton).toBeEnabled();
   await searchButton.click();
   await expect(
-    page.getByText("正在搜索 Comic Free Fixture Reader / Fixture Provider (en)…"),
+    page.getByText("正在搜索 Comic Free Fixture Reader / Fixture Provider（英语）…"),
   ).toBeVisible();
   releaseSearch();
   await expect(page.getByText("没有找到匹配的漫画。")).toBeVisible();

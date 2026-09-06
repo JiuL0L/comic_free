@@ -120,8 +120,29 @@ function providerOptionValue(provider: ReadingProvider): string {
     : JSON.stringify([provider.sourcePluginKey, provider.comicProviderKey]);
 }
 
+const displayedProviderLanguages = [
+  ["zh-Hans", "简体中文"],
+  ["zh-Hant", "繁体中文"],
+  ["en", "英语"],
+] as const;
+
+const providerLanguageLabels = new Map<string, string>(displayedProviderLanguages);
+const providerLanguageOrder = new Map<string, number>(
+  displayedProviderLanguages.map(([language], index) => [language, index]),
+);
+
+function displayedProviders(providers: ReadingProvider[]): ReadingProvider[] {
+  return providers
+    .filter((provider) => providerLanguageLabels.has(provider.language))
+    .sort(
+      (left, right) =>
+        (providerLanguageOrder.get(left.language) ?? Number.MAX_SAFE_INTEGER) -
+        (providerLanguageOrder.get(right.language) ?? Number.MAX_SAFE_INTEGER),
+    );
+}
+
 function providerLabel(provider: ReadingProvider): string {
-  return `${provider.sourcePluginName} / ${provider.name} (${provider.language})`;
+  return `${provider.sourcePluginName} / ${provider.name}（${providerLanguageLabels.get(provider.language) ?? provider.language}）`;
 }
 
 export function ReadingExperience() {
@@ -241,14 +262,15 @@ export function ReadingExperience() {
     ).then(
       (response) => {
         if (controller.signal.aborted) return;
-        setProviders((current) => ({
-          items:
-            response.state === "error" && response.items.length === 0
-              ? current.items
-              : response.items,
-          kind: response.state,
-          message: response.message,
-        }));
+        const items = displayedProviders(response.items);
+        setProviders((current) => {
+          const retainedItems = response.state === "error" && items.length === 0 ? current.items : items;
+          return {
+            items: retainedItems,
+            kind: response.state === "success" && retainedItems.length === 0 ? "empty" : response.state,
+            message: response.message,
+          };
+        });
       },
       (error: unknown) => {
         if (!controller.signal.aborted) {

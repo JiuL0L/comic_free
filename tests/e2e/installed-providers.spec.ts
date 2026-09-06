@@ -16,7 +16,7 @@ const OUTPUT_ROOT = path.resolve(ROOT, ".local-data/test-output/09-installed-pro
 const RUNTIME_ROOT = path.join(OUTPUT_ROOT, `browser-runtime-${process.pid}`);
 const DATA_DIRECTORY = path.join(RUNTIME_ROOT, "data");
 const EN_PROVIDER_VALUE = "fixture:reader";
-const FR_PROVIDER_VALUE = JSON.stringify(["fixture:reader", "fixture.provider.fr"]);
+const ZH_HANT_PROVIDER_VALUE = JSON.stringify(["fixture:reader", "fixture.provider.zh-Hant"]);
 
 let application: ChildProcess | undefined;
 let startupOutput = "";
@@ -87,7 +87,7 @@ async function searchAndOpen(page: import("@playwright/test").Page, optionValue:
   await page.getByLabel("搜索关键词").fill("adventure");
   const response = page.waitForResponse((candidate) => {
     const url = new URL(candidate.url());
-    return url.pathname === "/api/v1/catalog/search" && url.searchParams.get("comicProviderKey") === "fixture.provider.fr";
+    return url.pathname === "/api/v1/catalog/search" && url.searchParams.get("comicProviderKey") === "fixture.provider.zh-Hant";
   });
   await page.getByRole("button", { name: "搜索漫画" }).click();
   return response;
@@ -123,11 +123,11 @@ test("discovers installed same-plugin providers and preserves the selected route
       async () => select.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)),
       { timeout: 15_000 },
     )
-    .toContain(FR_PROVIDER_VALUE);
+    .toContain(ZH_HANT_PROVIDER_VALUE);
   await expect(select.locator(`option[value="${EN_PROVIDER_VALUE}"]`)).toHaveCount(1);
   expect(
     (await select.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)))
-      .filter((value) => value === FR_PROVIDER_VALUE),
+      .filter((value) => value === ZH_HANT_PROVIDER_VALUE),
   ).toHaveLength(1);
 
   await select.selectOption(EN_PROVIDER_VALUE);
@@ -135,30 +135,30 @@ test("discovers installed same-plugin providers and preserves the selected route
   await page.getByRole("button", { name: "搜索漫画" }).click();
   await expect(page.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
 
-  const frSearch = await searchAndOpen(page, FR_PROVIDER_VALUE);
-  expect(frSearch.status()).toBe(200);
-  await expect(page.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
+  const traditionalChineseSearch = await searchAndOpen(page, ZH_HANT_PROVIDER_VALUE);
+  expect(traditionalChineseSearch.status()).toBe(200);
+  await expect(page.getByText("Deterministic Adventure · zh-Hant", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "查看详情" }).click();
-  await expect(page.getByRole("heading", { name: "Deterministic Adventure · fr" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Deterministic Adventure · zh-Hant" })).toBeVisible();
   await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
 
   const reader = page.getByRole("region", { name: "阅读器" });
   await reader.getByRole("button", { name: "单页阅读" }).click();
-  const image = reader.getByRole("img", { name: "Deterministic Adventure · fr，第 1 / 3 页" });
+  const image = reader.getByRole("img", { name: "Deterministic Adventure · zh-Hant，第 1 / 3 页" });
   await expect(image).toBeVisible();
   await expect
     .poll(() => image.evaluate((element: HTMLImageElement) => [element.naturalWidth, element.naturalHeight]))
     .toEqual([800, 1200]);
   const pageResponse = await page.request.get((await image.getAttribute("src"))!);
-  expect(await pageResponse.text()).toContain("COMIC FREE FR FIXTURE");
+  expect(await pageResponse.text()).toContain("COMIC FREE ZH-HANT FIXTURE");
 
   await reader.getByRole("button", { name: "下一页" }).click();
   await expect(reader.getByText("第 2 / 3 页", { exact: true })).toBeVisible();
   await reader.getByRole("button", { name: "加入书架" }).click();
   const library = page.getByRole("region", { name: "书架" });
-  await expect(library.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
+  await expect(library.getByText("Deterministic Adventure · zh-Hant", { exact: true })).toBeVisible();
   const retained = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
-  expect(retained.items[0].sourceBinding.comicProviderKey).toBe("fixture.provider.fr");
+  expect(retained.items[0].sourceBinding.comicProviderKey).toBe("fixture.provider.zh-Hant");
   expect(retained.items[0].progress.pageIndex).toBe(1);
 
   expect((await page.request.post(`${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`, { data: change("disable") })).status()).toBe(200);
@@ -190,10 +190,10 @@ test("discovers installed same-plugin providers and preserves the selected route
       async () => restartedSelect.locator("option").evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)),
       { timeout: 15_000 },
     )
-    .toContain(FR_PROVIDER_VALUE);
-  await restartedSelect.selectOption(FR_PROVIDER_VALUE);
+    .toContain(ZH_HANT_PROVIDER_VALUE);
+  await restartedSelect.selectOption(ZH_HANT_PROVIDER_VALUE);
   const restartedLibrary = page.getByRole("region", { name: "书架" });
-  await expect(restartedLibrary.getByText("Deterministic Adventure · fr", { exact: true })).toBeVisible();
+  await expect(restartedLibrary.getByText("Deterministic Adventure · zh-Hant", { exact: true })).toBeVisible();
   await expect(restartedLibrary.getByText("需要刷新来源绑定")).toBeVisible();
   const afterRestart = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
   expect(afterRestart.items[0].snapshot).toEqual(beforeRestart.items[0].snapshot);

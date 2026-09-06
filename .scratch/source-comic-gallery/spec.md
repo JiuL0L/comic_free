@@ -13,6 +13,7 @@ Status: implemented
 - 整张封面卡片可点击，并打开对应漫画的详情及章节。
 - 加载中、空目录、失败和封面加载失败均有可见状态；关键词搜索继续可用。
 - 保留现有来源可用性策略、乱序响应防护、书架及阅读进度行为。
+- 来源选择器只展示简体中文、繁体中文和英语 Comic Provider，按简体中文、繁体中文、英语排序并使用中文语言名称。
 
 ## Verification seam
 
@@ -23,5 +24,5 @@ Status: implemented
 - `pnpm typecheck`: passed.
 - `pnpm build`: passed.
 - `pnpm test:unit`: 121 passed.
-- `pnpm test:e2e`: 12 passed.
+- `pnpm test:e2e`: 13 passed（包含中/英来源筛选、排序和中文标签验证）。
 - Browser Harness: fixture 来源封面实际加载为 800 × 1200，点击整张卡片后显示详情与 2 个章节。
