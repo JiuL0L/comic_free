@@ -12,10 +12,18 @@ import {
 } from "@comic-free/contracts";
 import type { ChildProcess } from "node:child_process";
 import { fork } from "node:child_process";
+import { mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
+const RUNTIME_ROOT = path.join(
+  ROOT,
+  ".local-data",
+  "test-output",
+  "startup-e2e",
+  `runtime-${process.pid}`,
+);
 let application: ChildProcess;
 let startupOutput = "";
 
@@ -65,9 +73,14 @@ async function waitForPortRelease(port: number): Promise<void> {
 }
 
 test.beforeAll(async () => {
+  await rm(RUNTIME_ROOT, { recursive: true, force: true });
+  await mkdir(RUNTIME_ROOT, { recursive: true });
   application = fork(path.join(ROOT, "scripts", "start-dev.ts"), [], {
     cwd: ROOT,
-    env: process.env,
+    env: {
+      ...process.env,
+      COMIC_FREE_DATA_DIR: path.join(RUNTIME_ROOT, "data"),
+    },
     execArgv: ["--import", "tsx"],
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -83,6 +96,7 @@ test.afterAll(async () => {
     waitForPortRelease(LOCAL_CORE_PORT),
     waitForPortRelease(WEB_UI_PORT),
   ]);
+  await rm(RUNTIME_ROOT, { recursive: true, force: true });
 });
 
 test("shows starting, ready, failed, and recovered startup states", async ({ page }) => {
