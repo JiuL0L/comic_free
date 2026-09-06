@@ -98,6 +98,63 @@ test.afterAll(async () => {
   await rm(RUNTIME_ROOT, { recursive: true, force: true });
 });
 
+test("loads every source catalog page as clickable covers and opens the selected comic", async ({ page }) => {
+  const installed = await page.request.post(
+    `${LOCAL_CORE_ORIGIN}${SOURCE_PLUGIN_CHANGES_PATH}`,
+    { data: sourcePluginChange("install") },
+  );
+  expect(installed.status()).toBe(200);
+
+  const comics = ["Gallery One", "Gallery Two", "Gallery Three"].map((title, index) => ({
+    comicKey: `comic/gallery-${index + 1}`,
+    coverRef: `fixture-cover/gallery-${index + 1}`,
+    sourcePluginKey: "fixture:reader",
+    sourcePluginName: "Comic Free Fixture Reader",
+    title,
+  }));
+  const requestedPages: number[] = [];
+  await page.route("**/api/v1/catalog/browse?*", async (route) => {
+    const pageNumber = Number(new URL(route.request().url()).searchParams.get("page"));
+    requestedPages.push(pageNumber);
+    await route.fulfill({
+      json: pageNumber === 1
+        ? { items: comics.slice(0, 2), nextPage: 2 }
+        : { items: comics.slice(2), nextPage: null },
+    });
+  });
+  await page.route("**/api/v1/catalog/comics/*/cover?*", async (route) => {
+    const title = comics.find((comic) => route.request().url().includes(encodeURIComponent(comic.comicKey)))?.title ?? "Cover";
+    await route.fulfill({
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="180"><rect width="120" height="180" fill="#dcebdd"/><text x="60" y="90" text-anchor="middle">${title}</text></svg>`,
+      contentType: "image/svg+xml",
+    });
+  });
+  await page.route("**/api/v1/catalog/comics/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/cover")) {
+      await route.fallback();
+      return;
+    }
+    const comic = comics.find((candidate) => url.pathname.includes(encodeURIComponent(candidate.comicKey))) ?? comics[0]!;
+    await route.fulfill({
+      json: url.pathname.endsWith("/chapters")
+        ? { items: [{ chapterKey: "chapter/gallery", label: "Gallery Chapter" }] }
+        : { comic: { ...comic, comicProviderKey: "fixture.provider", description: `${comic.title} description` } },
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
+
+  const covers = page.locator(".result-list").getByRole("img", { name: /封面$/ });
+  await expect(covers).toHaveCount(3);
+  await expect.poll(() => covers.evaluateAll((images: HTMLImageElement[]) => images.map((image) => image.naturalWidth))).toEqual([120, 120, 120]);
+  expect(requestedPages).toEqual([1, 2]);
+  await page.getByRole("button", { name: "查看详情：Gallery Three" }).click();
+  await expect(page.getByRole("heading", { name: "Gallery Three" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "阅读 Gallery Chapter" })).toBeVisible();
+});
+
 test("reads, retains, disables provider reading, and restores local state after restart", async ({
   page,
 }) => {

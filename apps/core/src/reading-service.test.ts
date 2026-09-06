@@ -108,6 +108,10 @@ test("refreshing a binding isolates identical comic keys belonging to different 
     const fixture = new FixtureReadingAdapter({key:'provider:v1:Shared:en',name:'Shared',language:'en'});
     return {
       sourcePlugin: {key: plugin, name: plugin}, comicProviderKey: fixture.comicProviderKey,
+      browse: async (page: number) => {
+        const result = await fixture.browse(page);
+        return {...result, items: result.items.map(item => ({...item, sourcePluginKey: plugin, sourcePluginName: plugin}))};
+      },
       search: async (query: string) => (await fixture.search(query)).map(item => ({...item, sourcePluginKey: plugin, sourcePluginName: plugin})),
       getDetails: async (key: string) => {
         if (plugin === 'plugin-b' && holdB) {entered(); await gate;}
@@ -119,6 +123,7 @@ test("refreshing a binding isolates identical comic keys belonging to different 
         return {...result, comic: {...result.comic, sourcePluginKey: plugin, sourcePluginName: plugin}};
       },
       readPage: (key: string) => fixture.readPage(key),
+      readCover: (key: string) => fixture.readCover(key),
     };
   }
   const registry = new ReadingProviderRegistry(catalog, async () => ['plugin-a','plugin-b'].map(plugin => ({descriptor:{sourcePluginKey:plugin,sourcePluginName:plugin,comicProviderKey:'provider:v1:Shared:en',name:'Same Provider',language:'en',available:true},runtimeKey:plugin,createAdapter:() => adapter(plugin)})));

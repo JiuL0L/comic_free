@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   readerPageUrl,
+  type CatalogBrowseResponse,
   type CatalogSearchItem,
   type LibraryItem,
   type ReaderSessionResponse,
@@ -91,13 +92,13 @@ export class ReadingService {
     }
   }
 
-  #requireReading(sourcePluginKey: string, comicKey?: string, refreshing = false): void {
+  #requireReading(sourcePluginKey: string, comicKey?: string, allowUnavailableBinding = false): void {
     this.#requirePlugin(sourcePluginKey);
     const plugin = this.#catalogStore?.readCatalog().entries.find(entry => entry.pluginKey === sourcePluginKey);
     if (plugin && plugin.status !== "healthy") {
       throw new ReadingServiceError("source_plugin_unavailable", `Reading is unavailable because the Source Plugin is ${plugin.reasonCode ?? plugin.status}.`, true, 409, failureLayerForReason(plugin.reasonCode));
     }
-    if (comicKey && !refreshing) {
+    if (comicKey && !allowUnavailableBinding) {
       this.#requireAvailableBinding(this.#store.getBySourceIdentity(sourcePluginKey, comicKey));
     }
   }
@@ -111,9 +112,9 @@ export class ReadingService {
     return JSON.stringify([this.#sourcePluginGenerations.get(sourcePluginKey) ?? 0, this.#comicProviderGenerations.get(JSON.stringify([sourcePluginKey, providerKey ?? this.#providerKey(sourcePluginKey, comicKey)])) ?? 0, this.#comicGenerations.get(JSON.stringify([sourcePluginKey, comicKey])) ?? 0, plugin]);
   }
 
-  async #read<T>(sourcePluginKey: string, comicKey: string | undefined, operation: (adapter: ReadingAdapter) => Promise<T>, refreshing = false, providerKey?: string): Promise<T> {
+  async #read<T>(sourcePluginKey: string, comicKey: string | undefined, operation: (adapter: ReadingAdapter) => Promise<T>, allowUnavailableBinding = false, providerKey?: string): Promise<T> {
     if (this.#adapter instanceof ReadingProviderRegistry) await this.#adapter.refresh();
-    this.#requireReading(sourcePluginKey, comicKey, refreshing);
+    this.#requireReading(sourcePluginKey, comicKey, allowUnavailableBinding);
     const adapter = this.#adapter instanceof ReadingProviderRegistry ? this.#adapter.get(sourcePluginKey, comicKey, providerKey) : this.#adapter;
     if (providerKey && adapter.comicProviderKey !== providerKey) throw new TypeError("Unknown Comic Provider.");
     providerKey ??= this.#providerKey(sourcePluginKey, comicKey) ?? adapter.comicProviderKey;
@@ -123,11 +124,11 @@ export class ReadingService {
       value = await operation(adapter);
     } catch (error) {
       // A result from an earlier Source Plugin generation must not overwrite a newer policy.
-      this.#requireReading(sourcePluginKey, comicKey, refreshing);
+      this.#requireReading(sourcePluginKey, comicKey, allowUnavailableBinding);
       if (revision === this.#readingPolicyRevision(sourcePluginKey, comicKey, providerKey)) this.#recordFailure(sourcePluginKey, comicKey, error, providerKey);
       throw error;
     }
-    this.#requireReading(sourcePluginKey, comicKey, refreshing);
+    this.#requireReading(sourcePluginKey, comicKey, allowUnavailableBinding);
     if (revision !== this.#readingPolicyRevision(sourcePluginKey, comicKey, providerKey)) {
       throw new ReadingServiceError("source_binding_refresh_required", "The Source Plugin changed while reading. Retry with a new reader session or refresh the binding.", true, 409);
     }
@@ -185,6 +186,15 @@ export class ReadingService {
 
   async search(sourcePluginKey: string, query: string, comicProviderKey?: string): Promise<CatalogSearchItem[]> {
     return this.#read(sourcePluginKey, undefined, adapter => adapter.search(query), false, comicProviderKey);
+  }
+
+  async browse(sourcePluginKey: string, page: number, comicProviderKey?: string): Promise<CatalogBrowseResponse> {
+    return this.#read(sourcePluginKey, undefined, adapter => adapter.browse(page), false, comicProviderKey);
+  }
+
+  async readCover(sourcePluginKey: string, comicKey: string): Promise<ReadingPage> {
+    // Catalog browsing is independent of whether this comic has a saved, readable Library binding.
+    return this.#read(sourcePluginKey, comicKey, adapter => adapter.readCover(comicKey), true);
   }
 
   async getProviders() {

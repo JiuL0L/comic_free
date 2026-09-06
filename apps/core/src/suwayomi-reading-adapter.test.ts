@@ -97,6 +97,51 @@ test("recorded Suwayomi generations keep durable provider keys while runtime ids
   assert.doesNotMatch(JSON.stringify(details), /api\/graphql|chapter\/601\/page/);
 });
 
+test("Suwayomi browse uses POPULAR pagination and reads covers only through the loopback Plugin Host", async () => {
+  const generation = loadGeneration("reading-generation-1");
+  const browseInputs: Array<Record<string, unknown>> = [];
+  const coverRequests: string[] = [];
+  const graphql: SuwayomiGraphqlTransport = {
+    async request(operation, variables) {
+      if (!operation.includes("ComicFreeBrowse")) {
+        return new RecordedTransport(generation).request(operation, variables);
+      }
+      const input = variables.input as Record<string, unknown>;
+      browseInputs.push(input);
+      const page = Number(input.page);
+      return {
+        data: {
+          fetchSourceManga: {
+            hasNextPage: page === 1,
+            mangas: [{ id: page === 1 ? 101 : 102, title: `Popular ${page}`, url: `/popular/${page}`, thumbnailUrl: `https://upstream.invalid/${page}.jpg` }],
+          },
+        },
+      };
+    },
+  };
+  const instance = adapter(generation, {
+    graphql,
+    pageFetch: async (input) => {
+      coverRequests.push(String(input));
+      return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { headers: { "content-type": "image/jpeg" } });
+    },
+  });
+
+  const first = await instance.browse(1);
+  const second = await instance.browse(first.nextPage!);
+  assert.deepEqual(browseInputs, [
+    { page: 1, source: "2499283573021220255", type: "POPULAR" },
+    { page: 2, source: "2499283573021220255", type: "POPULAR" },
+  ]);
+  assert.equal(first.nextPage, 2);
+  assert.equal(second.nextPage, null);
+
+  const cover = await instance.readCover(second.items[0]!.comicKey);
+  assert.equal(cover.contentType, "image/jpeg");
+  assert.deepEqual(coverRequests, ["http://127.0.0.1:4568/api/v1/manga/102/thumbnail?useCache=true"]);
+  assert.doesNotMatch(coverRequests[0]!, /upstream\.invalid/);
+});
+
 test("Suwayomi GraphQL errors become stable adapter errors without payload leakage", async () => {
   const failing = adapter({
     chapters: {},
