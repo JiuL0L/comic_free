@@ -6,7 +6,10 @@ import {
   type HealthResponse,
 } from "@comic-free/contracts";
 
-import { ReadingExperience } from "./ReadingExperience.tsx";
+import {
+  ReadingExperience,
+  type ReadingSection,
+} from "./ReadingExperience.tsx";
 import { SettingsPanel } from "./Settings.tsx";
 import { requestJson } from "./api.ts";
 
@@ -14,6 +17,15 @@ type StartupState =
   | { kind: "starting" }
   | { health: HealthResponse; kind: "ready" }
   | { kind: "failed"; message: string };
+
+type AppSection = ReadingSection | "settings";
+
+const sections: { id: AppSection; label: string }[] = [
+  { id: "library", label: "书架" },
+  { id: "discover", label: "找漫画" },
+  { id: "reader", label: "阅读" },
+  { id: "settings", label: "设置" },
+];
 
 async function requestHealth(signal: AbortSignal): Promise<HealthResponse> {
   return requestJson(CORE_HEALTH_URL, parseHealthResponse, { signal });
@@ -27,6 +39,16 @@ function failureMessage(error: unknown): string {
 export function App() {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<StartupState>({ kind: "starting" });
+  const [activeSection, setActiveSection] = useState<AppSection>("discover");
+  const [switchDirection, setSwitchDirection] = useState<"left" | "right">("left");
+
+  const showSection = (nextSection: AppSection) => {
+    if (nextSection === activeSection) return;
+    const currentIndex = sections.findIndex((section) => section.id === activeSection);
+    const nextIndex = sections.findIndex((section) => section.id === nextSection);
+    setSwitchDirection(nextIndex > currentIndex ? "left" : "right");
+    setActiveSection(nextSection);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -85,13 +107,33 @@ export function App() {
         <div className="status-line"><span className="status-dot ready" aria-hidden="true" /><span>Local Core · API {state.health.apiVersion}</span></div>
       </header>
       <nav className="primary-nav" aria-label="主导航">
-        <a href="#library">书架</a>
-        <a href="#discover">找漫画</a>
-        <a href="#reader">阅读</a>
-        <a href="#settings">设置</a>
+        {sections.map((section) => (
+          <button
+            key={section.id}
+            id={`nav-${section.id}`}
+            type="button"
+            aria-controls={section.id}
+            aria-current={activeSection === section.id ? "page" : undefined}
+            onClick={() => showSection(section.id)}
+          >
+            {section.label}
+          </button>
+        ))}
       </nav>
-      <ReadingExperience />
-      <SettingsPanel />
+      <div className="app-view-stack" data-switch-direction={switchDirection}>
+        <ReadingExperience
+          visibleSection={activeSection === "settings" ? null : activeSection}
+          switchDirection={switchDirection}
+          onOpenReader={() => showSection("reader")}
+        />
+        <div
+          className="app-view-panel"
+          data-switch-direction={switchDirection}
+          hidden={activeSection !== "settings"}
+        >
+          <SettingsPanel />
+        </div>
+      </div>
     </main>
   );
 }

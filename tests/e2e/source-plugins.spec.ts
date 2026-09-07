@@ -98,6 +98,7 @@ test("retains every Source Plugin state through failure, restart, removal, and r
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByRole("heading", { name: "漫画来源插件" })).toBeVisible();
   await expect(page.getByText("尚未发现漫画来源插件。")).toBeVisible();
 
@@ -168,6 +169,7 @@ test("retains every Source Plugin state through failure, restart, removal, and r
   await stopApplication();
   await startApplication();
   await page.goto("/");
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByText("Refresh failed", { exact: true })).toBeVisible();
   await expect(page.getByText("Healthy Fixture")).toBeVisible();
 
@@ -213,6 +215,7 @@ test("shows pending, successful, failed, and restart-required plugin changes", a
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByRole("heading", { name: "管理已确认的变更" })).toBeVisible();
   await page.getByLabel("扩展商店地址").fill(
     "https://fixtures.comic-free.invalid/repo/index.pb",
@@ -226,6 +229,7 @@ test("shows pending, successful, failed, and restart-required plugin changes", a
   await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
 
   await page.reload();
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByText("Fixture Provider", { exact: true })).toHaveCount(2);
   await page.getByLabel("扩展商店地址").fill(
     "https://fixtures.comic-free.invalid/repo/index.pb",

@@ -127,6 +127,7 @@ test("shows starting, ready, failed, and recovered startup states", async ({ pag
   releaseHealthRequest();
   await expect(page.getByRole("heading", { name: "每日漫画" })).toBeVisible();
   await expect(page.getByText("Local Core · API v1")).toBeVisible();
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(page.getByRole("heading", { name: "插件宿主状态" })).toBeVisible();
   await expect(page.getByText("尚未配置")).toBeVisible();
 
