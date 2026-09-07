@@ -143,7 +143,7 @@ test("discovers installed same-plugin providers and preserves the selected route
   await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
 
   const reader = page.getByRole("region", { name: "阅读器" });
-  await reader.getByRole("button", { name: "单页阅读" }).click();
+  await reader.getByRole("button", { name: "左右翻页" }).click();
   const image = reader.getByRole("img", { name: "Deterministic Adventure · zh-Hant，第 1 / 3 页" });
   await expect(image).toBeVisible();
   await expect
@@ -155,6 +155,7 @@ test("discovers installed same-plugin providers and preserves the selected route
   await reader.getByRole("button", { name: "下一页" }).click();
   await expect(reader.getByText("第 2 / 3 页", { exact: true })).toBeVisible();
   await reader.getByRole("button", { name: "加入书架" }).click();
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   const library = page.getByRole("region", { name: "书架" });
   await expect(library.getByText("Deterministic Adventure · zh-Hant", { exact: true })).toBeVisible();
   const retained = await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json();
@@ -192,6 +193,7 @@ test("discovers installed same-plugin providers and preserves the selected route
     )
     .toContain(ZH_HANT_PROVIDER_VALUE);
   await restartedSelect.selectOption(ZH_HANT_PROVIDER_VALUE);
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   const restartedLibrary = page.getByRole("region", { name: "书架" });
   await expect(restartedLibrary.getByText("Deterministic Adventure · zh-Hant", { exact: true })).toBeVisible();
   await expect(restartedLibrary.getByText("需要刷新来源绑定")).toBeVisible();

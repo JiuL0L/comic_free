@@ -18,7 +18,7 @@ Status: PARTIALLY VERIFIED
 
 ## Entrypoints
 
-- Daily reader: `Start-Comic-Free.cmd` / `scripts/launch-reader.ts` (`pnpm start`) checks installed runtimes, starts the supervised services, and opens the Windows default browser; `docs/daily-reader-launch.md` documents setup. `apps/web/src/App.tsx` provides the Chinese shelf/discovery/reader/settings navigation, with saved setup in `Settings.tsx`.
+- Daily reader: `Start-Comic-Free.cmd` / `scripts/launch-reader.ts` (`pnpm start`) checks installed runtimes, starts the supervised services, and opens the Windows default browser; `docs/daily-reader-launch.md` documents setup. `apps/web/src/App.tsx` provides click-to-switch Chinese shelf/discovery/reader/settings panels with horizontal transition direction; `ReadingExperience.tsx` opens the reader after chapter selection and supports continuous vertical scrolling or left/right paging, with saved setup in `Settings.tsx`.
 - Persisted setup: `packages/contracts/src/settings.ts`, `apps/core/src/settings.ts`, and `settings-http.ts` validate `GET/PUT /api/v1/settings` and atomically store settings in the selected data directory. Runtime environment overrides remain supported; changes take effect after restart. Feature scope: `.scratch/daily-reader/spec.md`; browser acceptance: `tests/e2e/daily-reader.spec.ts`.
 
 - Source recovery: `apps/core/src/reading-service.ts` checks retained plugin policy before and after reading; `POST /api/v1/source-bindings/:id/refresh` re-resolves saved identity/page without overwriting snapshots or progress. `apps/core/src/source-recovery-http.test.ts` covers disable, scoped failures, restart, and interleaved recovery.

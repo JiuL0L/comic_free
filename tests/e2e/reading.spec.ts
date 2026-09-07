@@ -195,7 +195,9 @@ test("reads, retains, disables provider reading, and restores local state after 
   expect(installed.status()).toBe(200);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "找漫画" })).toBeVisible();
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await expect(page.getByText("书架还是空的。")).toBeVisible();
+  await page.getByRole("button", { name: "找漫画", exact: true }).click();
 
   let releaseSearch!: () => void;
   const searchReleased = new Promise<void>((resolve) => {
@@ -237,7 +239,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
 
   const reader = page.getByRole("region", { name: "阅读器" });
-  await reader.getByRole("button", { name: "单页阅读" }).click();
+  await reader.getByRole("button", { name: "左右翻页" }).click();
   await expect(reader.getByText("Comic Free Fixture Reader", { exact: true })).toBeVisible();
   await expect(reader.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
   await expect(reader.getByText("Chapter 1 · The Local Beginning", { exact: true })).toBeVisible();
@@ -288,6 +290,7 @@ test("reads, retains, disables provider reading, and restores local state after 
 
   await test.step("shows a failed first Resume and lets the reader retry before a 阅读器 exists", async () => {
     await page.reload();
+    await page.getByRole("button", { name: "书架", exact: true }).click();
     const libraryRegion = page.getByRole("region", { name: "书架" });
     await expect(libraryRegion.getByRole("button", { name: "继续阅读" })).toBeEnabled();
 
@@ -381,6 +384,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   });
 
   await page.reload();
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   const libraryRegion = page.getByRole("region", { name: "书架" });
   await expect(libraryRegion.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
   await expect(libraryRegion.getByText("Source Plugin disabled")).toBeVisible();
@@ -415,6 +419,7 @@ test("reads, retains, disables provider reading, and restores local state after 
   await stopApplication();
   await startApplication();
   await page.goto("/");
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await expect(libraryRegion.getByText("Deterministic Adventure", { exact: true })).toBeVisible();
   await expect(libraryRegion.getByText("可阅读")).toBeVisible();
   await expect(libraryRegion.getByText("第 3 / 3 页")).toBeVisible();
@@ -626,6 +631,7 @@ test("clears a stale Resume pending state when a new search invalidates its read
   });
 
   await page.goto("/");
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   const library = page.getByRole("region", { name: "书架" });
   const resume = library.getByRole("button", { name: "继续阅读" });
   await expect(resume).toBeVisible();
@@ -633,10 +639,12 @@ test("clears a stale Resume pending state when a new search invalidates its read
   await resumeRequested;
   await expect(library.getByRole("button", { name: "正在恢复阅读…" })).toBeDisabled();
 
+  await page.getByRole("button", { name: "找漫画", exact: true }).click();
   await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
   await page.getByLabel("搜索关键词").fill("adventure");
   await page.getByLabel("搜索关键词").press("Enter");
   await expect(page.getByText("Deterministic Adventure", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await expect(library.getByRole("button", { name: "继续阅读" })).toBeEnabled();
 
   releaseResume();

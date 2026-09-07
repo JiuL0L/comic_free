@@ -96,9 +96,10 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
   await page.getByRole("button", { name: "查看详情" }).click();
   await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
   const reader = page.getByRole("region", { name: "阅读器" });
-  await reader.getByRole("button", { name: "单页阅读" }).click();
+  await reader.getByRole("button", { name: "左右翻页" }).click();
   const library = page.getByRole("region", { name: "书架" });
   await reader.getByRole("button", { name: "加入书架" }).click();
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await expect(library.getByRole("button", { name: "从书架删除" })).toBeVisible();
   const before = parseLibraryItemsResponse(await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json());
   const item = before.items[0]!;
@@ -134,6 +135,7 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
     await route.fulfill({ response });
   });
   await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "阅读", exact: true }).click();
   await reader.getByRole("button", { name: "下一页" }).click();
   await progressStarted;
   let resumeReady!: () => void;
@@ -144,6 +146,7 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
     await oldGate;
     await route.fulfill({ response });
   });
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await library.getByRole("button", { name: "继续阅读" }).click();
   await resumeStarted;
   await library.getByRole("button", { name: "从书架删除" }).click();
@@ -168,6 +171,7 @@ test("confirms deletion, preserves on failure, retries and prevents stale readin
   await stopApplication();
   await startApplication();
   await page.goto("/");
+  await page.getByRole("button", { name: "书架", exact: true }).click();
   await expect(library.getByText("书架还是空的。")).toBeVisible();
   expect(await (await page.request.get(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`)).json()).toEqual({ items: [] });
 });

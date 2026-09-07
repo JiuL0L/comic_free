@@ -67,22 +67,57 @@ code {
 .app-header .summary { margin-bottom: 0; }
 
 .primary-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
   margin-top: 2rem;
   padding: 0.45rem 0;
   border-block: 1px solid #d4d2ca;
 }
 
-.primary-nav a {
+.primary-nav button {
   padding: 0.55rem 0.7rem;
   color: #202320;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
   text-decoration: none;
   font-weight: 700;
 }
 
-.primary-nav a:hover,
-.primary-nav a:focus-visible { background: #e7e5de; }
+.primary-nav button:hover,
+.primary-nav button:focus-visible { background: #e7e5de; }
+
+.primary-nav button[aria-current="page"] {
+  color: #f8f8f4;
+  background: #202320;
+}
+
+.app-view-stack {
+  overflow: hidden;
+}
+
+.app-view-panel:not([hidden]) {
+  animation: switch-from-right 180ms ease-out;
+}
+
+.app-view-panel[data-switch-direction="left"]:not([hidden]) {
+  animation-name: switch-from-left;
+}
+
+@keyframes switch-from-left {
+  from { opacity: 0; transform: translateX(2rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes switch-from-right {
+  from { opacity: 0; transform: translateX(-2rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-view-panel:not([hidden]) { animation: none; }
+}
 
 .settings-panel { margin-top: 5rem; padding-top: 2rem; border-top: 1px solid #d4d2ca; }
 .settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 1.25rem 0; }

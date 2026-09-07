@@ -38,13 +38,65 @@ async function stopApplication(): Promise<void> {
 test.beforeAll(async () => { await rm(RUNTIME_ROOT, { recursive: true, force: true }); await mkdir(RUNTIME_ROOT, { recursive: true }); await startApplication(); });
 test.afterAll(async () => { await stopApplication(); await rm(RUNTIME_ROOT, { recursive: true, force: true }); });
 
+test("点击栏目后左右切换到单一内容面板", async ({ page }) => {
+  await page.goto("/");
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  const discoverTab = navigation.getByRole("button", { name: "找漫画" });
+  const libraryTab = navigation.getByRole("button", { name: "书架" });
+  const settingsTab = navigation.getByRole("button", { name: "设置" });
+
+  await expect(discoverTab).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("region", { name: "找漫画" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "书架" })).toBeHidden();
+
+  await libraryTab.click();
+  await expect(libraryTab).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("region", { name: "书架" }))
+    .toHaveAttribute("data-switch-direction", "right");
+  await expect(page.getByRole("region", { name: "书架" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "找漫画" })).toBeHidden();
+
+  await settingsTab.click();
+  await expect(settingsTab).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".app-view-panel:not([hidden])"))
+    .toHaveAttribute("data-switch-direction", "left");
+  await expect(page.locator("#settings")).toBeVisible();
+  await expect(page.getByRole("region", { name: "书架" })).toBeHidden();
+});
+
+test("点击漫画封面和章节后可在竖向滑动与左右翻页间切换", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("comic-free-reading-mode", "scroll"));
+  await page.goto("/");
+
+  await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
+  await page.getByRole("button", { name: "查看详情：Deterministic Adventure" }).click();
+  await expect(page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" })).toBeVisible();
+  await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation.getByRole("button", { name: "阅读" })).toHaveAttribute("aria-current", "page");
+  const reader = page.getByRole("region", { name: "阅读器" });
+  await expect(reader).toBeVisible();
+  await expect(page.getByRole("region", { name: "找漫画" })).toBeHidden();
+  await expect(reader.getByRole("button", { name: "连续滚动" })).toHaveAttribute("aria-pressed", "true");
+  await expect(reader.locator(".reader-page")).toHaveCount(3);
+
+  await reader.getByRole("button", { name: "左右翻页" }).click();
+  await expect(reader.getByRole("button", { name: "左右翻页" })).toHaveAttribute("aria-pressed", "true");
+  await expect(reader.locator(".page-frame > img")).toHaveCount(1);
+  await reader.getByRole("button", { name: "下一页" }).click();
+  await expect(reader.getByText("第 2 / 3 页", { exact: true })).toBeVisible();
+});
+
 test("提供中文四段导航，并在连续阅读新章节时保存同一书架条目", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "书架" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "找漫画" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "阅读" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "设置" })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation).toBeVisible();
+  await expect(navigation.getByRole("button", { name: "书架" })).toBeVisible();
+  await expect(navigation.getByRole("button", { name: "找漫画" })).toBeVisible();
+  await expect(navigation.getByRole("button", { name: "阅读" })).toBeVisible();
+  await expect(navigation.getByRole("button", { name: "设置" })).toBeVisible();
 
   await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
   await page.getByLabel("搜索关键词").fill("adventure");
@@ -85,6 +137,7 @@ test("提供中文四段导航，并在连续阅读新章节时保存同一书�
     await route.continue();
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "书架" }).click();
   await page.getByRole("region", { name: "书架" }).getByRole("button", { name: "继续阅读" }).click();
   await firstPageRequested;
   releaseFirstPage();
@@ -103,6 +156,7 @@ test("损坏设置可在页面修复，错误保留草稿，保存后重启生�
   await writeFile(path.join(RUNTIME_ROOT, "data", "settings.json"), "{broken", "utf8");
   await startApplication();
   await page.goto("/");
+  await page.getByRole("button", { name: "设置" }).click();
   const settings = page.locator("#settings");
   await expect(settings.getByRole("alert")).toContainText("保存的设置无法读取");
   const jarPath = settings.getByLabel("Suwayomi JAR 路径");
@@ -115,6 +169,7 @@ test("损坏设置可在页面修复，错误保留草稿，保存后重启生�
   await settings.getByRole("button", { name: "保存设置", exact: true }).click();
   await expect(settings.getByText("设置已保存，将在重启后生效。")).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "设置" }).click();
   await expect(settings.getByLabel("Suwayomi 内部端口")).toHaveValue("4569");
   await page.goto("about:blank");
   await stopApplication();
@@ -139,5 +194,6 @@ test("书架按最近阅读时间展示，而不是标题顺序", async ({ page 
   const recent = { ...item, snapshot: { ...item.snapshot, title: "Zulu Recent" }, progress: { ...item.progress, updatedAt: "2026-09-06T00:00:00.000Z" } };
   await page.route(`${LOCAL_CORE_ORIGIN}${LIBRARY_ITEMS_PATH}`, route => route.fulfill({ json: { items: [older, recent] } }));
   await page.goto("/");
+  await page.getByRole("button", { name: "书架" }).click();
   await expect(page.getByRole("region", { name: "书架" }).getByRole("heading", { level: 3 })).toHaveText(["Zulu Recent", "Alpha Older"]);
 });

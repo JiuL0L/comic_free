@@ -145,7 +145,20 @@ function providerLabel(provider: ReadingProvider): string {
   return `${provider.sourcePluginName} / ${provider.name}（${providerLanguageLabels.get(provider.language) ?? provider.language}）`;
 }
 
-export function ReadingExperience() {
+export type ReadingSection = "discover" | "library" | "reader";
+
+interface ReadingExperienceProps {
+  visibleSection: ReadingSection | null;
+  onOpenReader: () => void;
+  switchDirection: "left" | "right";
+}
+
+export function ReadingExperience({
+  visibleSection,
+  onOpenReader,
+  switchDirection,
+}: ReadingExperienceProps) {
+  const readerIsVisible = visibleSection === "reader";
   const [providers, setProviders] = useState<ReadingProvidersState>({
     items: [],
     kind: "loading",
@@ -532,6 +545,7 @@ export function ReadingExperience() {
       );
       if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       acceptSession(response.session);
+      onOpenReader();
     } catch (error) {
       if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       setDetails({
@@ -556,6 +570,7 @@ export function ReadingExperience() {
       setRetainedId(item.id);
       void loadReaderDetails(response.session);
       setResumeStates((states) => ({ ...states, [item.id]: { kind: "success" } }));
+      onOpenReader();
     } catch (error) {
       if (generation !== readingGeneration.current || request !== readerRequest.current) return;
       setResumeStates((states) => ({
@@ -701,7 +716,7 @@ export function ReadingExperience() {
   };
 
   useEffect(() => {
-    if (!reader || readingMode !== "scroll" || !scrollReady.current) return;
+    if (!readerIsVisible || !reader || readingMode !== "scroll" || !scrollReady.current) return;
     let frame: number | null = null;
     const trackVisiblePage = () => {
       frame = null;
@@ -727,10 +742,10 @@ export function ReadingExperience() {
       window.removeEventListener("resize", scheduleVisiblePage);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [scrollTrackingVersion, pageLoadStates, reader, readingMode, retainedId]);
+  }, [readerIsVisible, scrollTrackingVersion, pageLoadStates, reader, readingMode, retainedId]);
 
   useEffect(() => {
-    if (!reader || readingMode !== "scroll") return;
+    if (!readerIsVisible || !reader || readingMode !== "scroll") return;
     if (!scrollAnchorPending.current) return;
     scrollReady.current = false;
     const targetPage = scrollAnchorPage.current;
@@ -744,10 +759,10 @@ export function ReadingExperience() {
       setScrollTrackingVersion(version => version + 1);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [anchorVersion, pageLoadStates, reader?.id, readingMode]);
+  }, [readerIsVisible, anchorVersion, pageLoadStates, reader?.id, readingMode]);
 
   useEffect(() => {
-    if (!reader) return;
+    if (!readerIsVisible || !reader) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
@@ -765,11 +780,17 @@ export function ReadingExperience() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [pageIndex, reader, readingMode, retainedId]);
+  }, [readerIsVisible, pageIndex, reader, readingMode, retainedId]);
 
   return (
     <>
-      <section id="discover" className="reading-panel" aria-labelledby="find-comic-heading">
+      <section
+        id="discover"
+        className="reading-panel app-view-panel"
+        aria-labelledby="find-comic-heading"
+        data-switch-direction={switchDirection}
+        hidden={visibleSection !== "discover"}
+      >
         <p className="eyebrow">READ / COMIC CATALOG</p>
         <h2 id="find-comic-heading">找漫画</h2>
         <div className="search-controls">
@@ -885,8 +906,17 @@ export function ReadingExperience() {
         )}
       </section>
 
-      {reader && (
-        <section id="reader" className={`reader ${fitWidth ? "fit-width" : "fit-page"}`} role="region" aria-label="阅读器">
+      <section
+        id="reader"
+        className={`reader app-view-panel ${fitWidth ? "fit-width" : "fit-page"}`}
+        role="region"
+        aria-label="阅读器"
+        data-switch-direction={switchDirection}
+        hidden={!readerIsVisible}
+      >
+        {!reader && <p className="reading-notice">请先在“找漫画”中选择漫画，再选择要阅读的章节。</p>}
+        {reader && (
+          <>
           <div className="reader-context">
             <div>
               <p className="eyebrow">{reader.sourcePluginName}</p>
@@ -934,7 +964,7 @@ export function ReadingExperience() {
           </div>
           <div className="reader-tools">
             <button type="button" aria-pressed={readingMode === "scroll"} onClick={() => { setReadingMode("scroll"); requestScrollAnchor(pageIndex); }}>连续滚动</button>
-            <button type="button" aria-pressed={readingMode === "page"} onClick={() => setReadingMode("page")}>单页阅读</button>
+            <button type="button" aria-pressed={readingMode === "page"} onClick={() => setReadingMode("page")}>左右翻页</button>
             <button type="button" aria-pressed={fitWidth} onClick={() => { setFitWidth(value => !value); if (readingMode === "scroll") requestScrollAnchor(pageIndex); }}>{fitWidth ? "适合宽度" : "适合页面"}</button>
           </div>
           <div className="reader-actions">
@@ -945,10 +975,18 @@ export function ReadingExperience() {
           {details.kind === "success" && (() => { const chapterIndex = details.chapters.findIndex(chapter => chapter.chapterKey === reader.chapterKey); return <div className="reader-chapters"><button type="button" disabled={chapterIndex <= 0} onClick={() => void openChapter(details.chapters[chapterIndex - 1]!.chapterKey)}>上一话</button><button type="button" disabled={chapterIndex < 0 || chapterIndex >= details.chapters.length - 1} onClick={() => void openChapter(details.chapters[chapterIndex + 1]!.chapterKey)}>下一话</button></div>; })()}
           {saveMessage && <p className="save-message" role="status">{saveMessage}</p>}
           {retainedId && saveMessage?.startsWith("阅读进度未保存") && <button type="button" onClick={() => void saveProgress(retainedId, reader, pageIndex)}>重试保存当前位置</button>}
-        </section>
-      )}
+          </>
+        )}
+      </section>
 
-      <section id="library" className="library-panel" role="region" aria-label="书架">
+      <section
+        id="library"
+        className="library-panel app-view-panel"
+        role="region"
+        aria-label="书架"
+        data-switch-direction={switchDirection}
+        hidden={visibleSection !== "library"}
+      >
         <div className="section-heading">
           <div>
             <p className="eyebrow">LOCAL / RETAINED STATE</p>
