@@ -1,4 +1,5 @@
 import type {
+  CatalogBrowseResponse,
   CatalogSearchItem,
   ComicDetailsResponse,
 } from "@comic-free/contracts";
@@ -84,6 +85,15 @@ const SEARCH_OPERATION = `
   }
 `;
 
+const BROWSE_OPERATION = `
+  mutation ComicFreeBrowse($input: FetchSourceMangaInput!) {
+    fetchSourceManga(input: $input) {
+      hasNextPage
+      mangas { id title url thumbnailUrl }
+    }
+  }
+`;
+
 const DETAILS_OPERATION = `
   mutation ComicFreeDetails($input: FetchMangaInput!) {
     fetchManga(input: $input) {
@@ -155,6 +165,7 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
   readonly #origin: () => string | null;
   readonly #pageFetch: FetchLike;
   readonly #requestTimeoutMs: number;
+  readonly #runtimeMangaIds = new Map<string, number>();
   readonly #sourceId: string;
 
   constructor(options: SuwayomiReadingAdapterOptions) {
@@ -190,6 +201,21 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
     return this.#normalize(async () => {
       const mangas = await this.#searchMangas(requiredString(query, "search query"));
       return mangas.map((manga) => this.#catalogItem(manga));
+    });
+  }
+
+  async browse(page: number): Promise<CatalogBrowseResponse> {
+    return this.#normalize(async () => {
+      const currentPage = positiveInteger(page, "catalog page");
+      const result = parseBrowseResponse(
+        await this.#graphql.request(BROWSE_OPERATION, {
+          input: { page: currentPage, source: this.#sourceId, type: "POPULAR" },
+        }),
+      );
+      return {
+        items: result.mangas.map((manga) => this.#catalogItem(manga)),
+        nextPage: result.hasNextPage ? currentPage + 1 : null,
+      };
     });
   }
 
@@ -347,6 +373,18 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
     });
   }
 
+  async readCover(comicKey: string, signal?: AbortSignal): Promise<ReadingPage> {
+    return this.#normalize(async () => {
+      let runtimeMangaId = this.#runtimeMangaIds.get(comicKey);
+      if (runtimeMangaId === undefined) {
+        const reference = decodeReference<DurableComicReference>(comicKey, COMIC_KEY_PREFIX, "comic");
+        runtimeMangaId = (await this.#resolveManga(reference)).id;
+        this.#runtimeMangaIds.set(comicKey, runtimeMangaId);
+      }
+      return this.readPage(`/api/v1/manga/${runtimeMangaId}/thumbnail?useCache=true`, signal);
+    });
+  }
+
   async #searchMangas(query: string): Promise<SuwayomiManga[]> {
     return parseSearchResponse(
       await this.#graphql.request(SEARCH_OPERATION, {
@@ -378,6 +416,7 @@ export class SuwayomiReadingAdapter implements ReadingAdapter {
       title: manga.title,
       url: manga.url,
     });
+    this.#runtimeMangaIds.set(comicKey, manga.id);
     return {
       comicKey,
       coverRef: `comic-free-cover:${comicKey}`,
@@ -447,6 +486,18 @@ function parseSearchResponse(value: unknown): SuwayomiManga[] {
   const result = object(data.fetchSourceManga, "fetchSourceManga");
   if (!Array.isArray(result.mangas)) throw new SuwayomiResponseError("invalid");
   return result.mangas.map((candidate) => manga(candidate));
+}
+
+function parseBrowseResponse(value: unknown): { hasNextPage: boolean; mangas: SuwayomiManga[] } {
+  const data = graphqlData(value);
+  const result = object(data.fetchSourceManga, "fetchSourceManga");
+  if (typeof result.hasNextPage !== "boolean" || !Array.isArray(result.mangas)) {
+    throw new SuwayomiResponseError("invalid");
+  }
+  return {
+    hasNextPage: result.hasNextPage,
+    mangas: result.mangas.map((candidate) => manga(candidate)),
+  };
 }
 
 function parseDetailsResponse(value: unknown): SuwayomiMangaDetails {

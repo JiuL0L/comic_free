@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  CATALOG_BROWSE_PATH,
   CATALOG_SEARCH_PATH,
   LIBRARY_ITEMS_PATH,
   READING_SOURCE_PLUGIN_PATH,
@@ -72,10 +73,14 @@ function requestDiagnostics(pathname: string): Pick<ReadingDiagnosticsLogEntry, 
   if (/^\/api\/v1\/reader-sessions\/[^/]+\/pages\/[^/]+$/.test(pathname)) {
     return { requestKind: "image", route: "reader-page" };
   }
+  if (/^\/api\/v1\/catalog\/comics\/[^/]+\/cover$/.test(pathname)) {
+    return { requestKind: "image", route: "catalog-cover" };
+  }
   if (pathname === READER_SESSIONS_PATH) {
     return { requestKind: "reader-session", route: "reader-session" };
   }
   if (pathname === CATALOG_SEARCH_PATH) return { requestKind: "read", route: "catalog-search" };
+  if (pathname === CATALOG_BROWSE_PATH) return { requestKind: "read", route: "catalog-browse" };
   if (/^\/api\/v1\/catalog\/comics\/[^/]+\/chapters$/.test(pathname)) {
     return { requestKind: "read", route: "catalog-chapters" };
   }
@@ -161,6 +166,22 @@ function requireQuery(value: string | null, field: string): string {
   return value;
 }
 
+function requirePositiveInteger(value: string | null, field: string): number {
+  const parsed = Number(value);
+  if (!value || !Number.isInteger(parsed) || parsed < 1) {
+    throw new TypeError(`Invalid ${field}: expected a positive integer.`);
+  }
+  return parsed;
+}
+
+function requireExactQuery(requestUrl: URL, allowed: readonly string[], context: string): void {
+  for (const key of requestUrl.searchParams.keys()) {
+    if (!allowed.includes(key) || requestUrl.searchParams.getAll(key).length !== 1) {
+      throw new TypeError(`Invalid ${context} query parameters.`);
+    }
+  }
+}
+
 function requireNoQuery(requestUrl: URL): void {
   if ([...requestUrl.searchParams.keys()].length > 0) {
     throw new TypeError("Invalid delete Library Item request: query parameters are not allowed.");
@@ -205,6 +226,7 @@ export function createReadingHttpHandler(
     const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
     const { pathname } = requestUrl;
     const detailsMatch = pathname.match(/^\/api\/v1\/catalog\/comics\/([^/]+)$/);
+    const coverMatch = pathname.match(/^\/api\/v1\/catalog\/comics\/([^/]+)\/cover$/);
     const chaptersMatch = pathname.match(
       /^\/api\/v1\/catalog\/comics\/([^/]+)\/chapters$/,
     );
@@ -221,10 +243,11 @@ export function createReadingHttpHandler(
     const refreshMatch = pathname.match(/^\/api\/v1\/source-bindings\/([^/]+)\/refresh$/);
     const known =
       pathname === CATALOG_SEARCH_PATH ||
+      pathname === CATALOG_BROWSE_PATH ||
       (pathname === READING_SOURCE_PLUGIN_PATH || pathname === READING_PROVIDERS_PATH) ||
       pathname === READER_SESSIONS_PATH ||
       pathname === LIBRARY_ITEMS_PATH ||
-      Boolean(detailsMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || refreshMatch || deleteMatch);
+      Boolean(detailsMatch || coverMatch || chaptersMatch || pageMatch || progressMatch || unavailableMatch || refreshMatch || deleteMatch);
     if (!known) return false;
 
     try {
@@ -246,12 +269,41 @@ export function createReadingHttpHandler(
           requestUrl.searchParams.get("sourcePluginKey"),
           "sourcePluginKey",
         );
-        for (const key of requestUrl.searchParams.keys()) {
-          if (!["sourcePluginKey", "comicProviderKey", "q"].includes(key) || requestUrl.searchParams.getAll(key).length !== 1) throw new TypeError("Invalid catalog search query parameters.");
-        }
+        requireExactQuery(requestUrl, ["sourcePluginKey", "comicProviderKey", "q"], "catalog search");
         const selection = parseReadingProviderSelection({sourcePluginKey, ...(requestUrl.searchParams.has("comicProviderKey") ? {comicProviderKey: requestUrl.searchParams.get("comicProviderKey")} : {})});
         const query = requireQuery(requestUrl.searchParams.get("q"), "q");
         writeJson(response, 200, { items: await service.search(selection.sourcePluginKey, query, selection.comicProviderKey) });
+        return true;
+      }
+
+      if (pathname === CATALOG_BROWSE_PATH) {
+        if (request.method !== "GET") {
+          methodNotAllowed(response, "GET");
+          return true;
+        }
+        const sourcePluginKey = requireQuery(requestUrl.searchParams.get("sourcePluginKey"), "sourcePluginKey");
+        requireExactQuery(requestUrl, ["sourcePluginKey", "comicProviderKey", "page"], "catalog browse");
+        const selection = parseReadingProviderSelection({sourcePluginKey, ...(requestUrl.searchParams.has("comicProviderKey") ? {comicProviderKey: requestUrl.searchParams.get("comicProviderKey")} : {})});
+        const page = requirePositiveInteger(requestUrl.searchParams.get("page"), "page");
+        writeJson(response, 200, await service.browse(selection.sourcePluginKey, page, selection.comicProviderKey));
+        return true;
+      }
+
+      if (coverMatch) {
+        if (request.method !== "GET") {
+          methodNotAllowed(response, "GET");
+          return true;
+        }
+        const sourcePluginKey = requireQuery(requestUrl.searchParams.get("sourcePluginKey"), "sourcePluginKey");
+        requireExactQuery(requestUrl, ["sourcePluginKey"], "catalog cover");
+        const cover = await service.readCover(sourcePluginKey, decodeURIComponent(coverMatch[1] as string));
+        response.writeHead(200, {
+          "Cache-Control": "private, max-age=300",
+          "Content-Length": cover.bytes.length,
+          "Content-Type": cover.contentType,
+          "X-Content-Type-Options": "nosniff",
+        });
+        response.end(cover.bytes);
         return true;
       }
 

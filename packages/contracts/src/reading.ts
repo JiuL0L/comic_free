@@ -1,5 +1,6 @@
 import { LOCAL_CORE_ORIGIN } from "./index.ts";
 
+export const CATALOG_BROWSE_PATH = "/api/v1/catalog/browse" as const;
 export const CATALOG_SEARCH_PATH = "/api/v1/catalog/search" as const;
 export const LIBRARY_ITEMS_PATH = "/api/v1/library-items" as const;
 export const READING_PROVIDERS_PATH = "/api/v1/reading/providers" as const;
@@ -47,6 +48,11 @@ export interface CatalogSearchItem {
 
 export interface CatalogSearchResponse {
   items: CatalogSearchItem[];
+}
+
+export interface CatalogBrowseResponse {
+  items: CatalogSearchItem[];
+  nextPage: number | null;
 }
 
 export interface ReadingSourcePluginResponse {
@@ -239,6 +245,24 @@ export function parseCatalogSearchResponse(value: unknown): CatalogSearchRespons
   }
   return {
     items: response.items.map((item, index) => catalogItem(item, `items[${index}]`)),
+  };
+}
+
+export function parseCatalogBrowseResponse(value: unknown): CatalogBrowseResponse {
+  const response = record(value, "catalog browse response");
+  exactFields(response, ["items", "nextPage"], "catalog browse response");
+  if (!Array.isArray(response.items)) {
+    throw new TypeError("Invalid items: expected an array.");
+  }
+  if (
+    response.nextPage !== null &&
+    (typeof response.nextPage !== "number" || !Number.isInteger(response.nextPage) || response.nextPage < 1)
+  ) {
+    throw new TypeError("Invalid nextPage: expected a positive integer or null.");
+  }
+  return {
+    items: response.items.map((item, index) => catalogItem(item, `items[${index}]`)),
+    nextPage: response.nextPage as number | null,
   };
 }
 
@@ -599,6 +623,28 @@ export function catalogSearchUrl(
   }
   url.searchParams.set("sourcePluginKey", sourcePluginKey);
   url.searchParams.set("q", query);
+  return url.href;
+}
+
+export function catalogBrowseUrl(
+  sourcePluginKey: string,
+  page: number,
+  comicProviderKey?: string,
+): string {
+  const url = new URL(`${LOCAL_CORE_ORIGIN}${CATALOG_BROWSE_PATH}`);
+  if (comicProviderKey !== undefined) {
+    url.searchParams.set("comicProviderKey", comicProviderKey);
+  }
+  url.searchParams.set("sourcePluginKey", sourcePluginKey);
+  url.searchParams.set("page", String(page));
+  return url.href;
+}
+
+export function catalogCoverUrl(sourcePluginKey: string, comicKey: string): string {
+  const url = new URL(
+    `${LOCAL_CORE_ORIGIN}/api/v1/catalog/comics/${encodeURIComponent(comicKey)}/cover`,
+  );
+  url.searchParams.set("sourcePluginKey", sourcePluginKey);
   return url.href;
 }
 

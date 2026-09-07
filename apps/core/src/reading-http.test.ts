@@ -6,11 +6,13 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  CATALOG_BROWSE_PATH,
   CATALOG_SEARCH_PATH,
   FIXTURE_SOURCE_PLUGIN,
   LIBRARY_ITEMS_PATH,
   READER_SESSIONS_PATH,
   parseApiErrorResponse,
+  parseCatalogBrowseResponse,
   parseCatalogChaptersResponse,
   parseCatalogSearchResponse,
   parseComicDetailsResponse,
@@ -18,6 +20,7 @@ import {
   parseLibraryItemsResponse,
   parseDeleteLibraryItemResponse,
   parseReaderSessionResponse,
+  catalogCoverUrl,
 } from "@comic-free/contracts";
 
 import {
@@ -104,6 +107,24 @@ test("REST journey reads exact session bytes, retains progress, and survives res
     );
     assert.equal(search.items.length, 1);
 
+    const browseUrl = new URL(`${running.baseUrl}${CATALOG_BROWSE_PATH}`);
+    browseUrl.searchParams.set("sourcePluginKey", FIXTURE_SOURCE_PLUGIN.key);
+    browseUrl.searchParams.set("page", "1");
+    const browseResponse = await fetch(browseUrl, { signal: AbortSignal.timeout(1_000) });
+    assert.equal(browseResponse.status, 200);
+    const browse = parseCatalogBrowseResponse(await responseJson(browseResponse));
+    assert.equal(browse.items.length, 1);
+    assert.equal(browse.nextPage, null);
+
+    const coverResponse = await fetch(
+      `${running.baseUrl}/api/v1/catalog/comics/${encodeURIComponent(FIXTURE_COMIC_KEY)}/cover?sourcePluginKey=${encodeURIComponent(FIXTURE_SOURCE_PLUGIN.key)}`,
+      { signal: AbortSignal.timeout(1_000) },
+    );
+    const coverBytes = Buffer.from(await coverResponse.arrayBuffer());
+    assert.equal(coverResponse.status, 200);
+    assert.equal(coverResponse.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+    assert.match(coverBytes.toString("utf8"), /PAGE ONE/);
+
     const encodedComic = encodeURIComponent(FIXTURE_COMIC_KEY);
     const details = parseComicDetailsResponse(
       await responseJson(
@@ -179,6 +200,11 @@ test("REST journey reads exact session bytes, retains progress, and survives res
     assert.equal(unavailable.sourceBinding.availability, "unavailable");
     assert.deepEqual(unavailable.snapshot, progressed.snapshot);
     assert.deepEqual(unavailable.progress, progressed.progress);
+
+    const catalogCoverRoute = new URL(catalogCoverUrl(FIXTURE_SOURCE_PLUGIN.key, FIXTURE_COMIC_KEY));
+    const catalogCover = await fetch(`${running.baseUrl}${catalogCoverRoute.pathname}${catalogCoverRoute.search}`);
+    assert.equal(catalogCover.status, 200, "Catalog covers remain browsable independently of a saved Source Binding.");
+    assert.equal(catalogCover.headers.get("content-type"), "image/svg+xml; charset=utf-8");
 
     const invalidatedPage = await fetch(
       `${running.baseUrl}${READER_SESSIONS_PATH}/${session.id}/pages/1`,

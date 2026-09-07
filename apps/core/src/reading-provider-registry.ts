@@ -31,6 +31,10 @@ function scopeAdapter(adapter: ReadingAdapter, provider: string): ReadingAdapter
   const details = async (key: string) => ({...await adapter.getDetails(unwrap(key)), comicKey: key});
   return {
     sourcePlugin: adapter.sourcePlugin, comicProviderKey: provider,
+    browse: async page => {
+      const result = await adapter.browse(page);
+      return {...result, items: result.items.map(item => ({...item, comicKey: scopedComicKey(provider, item.comicKey)}))};
+    },
     search: async query => (await adapter.search(query)).map(item => ({...item, comicKey: scopedComicKey(provider, item.comicKey)})),
     getDetails: details,
     getChapters: key => adapter.getChapters(unwrap(key)),
@@ -39,6 +43,7 @@ function scopeAdapter(adapter: ReadingAdapter, provider: string): ReadingAdapter
       return {...result, comic: {...result.comic, comicKey: key}};
     },
     readPage: (key, signal) => adapter.readPage(key, signal),
+    readCover: (key, signal) => adapter.readCover(unwrap(key), signal),
   };
 }
 

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  catalogBrowseUrl,
+  catalogCoverUrl,
   catalogSearchUrl,
+  parseCatalogBrowseResponse,
   parseReadingSourcePluginResponse,
   parseReadingProviderSelection,
   parseReadingProvidersResponse,
@@ -68,6 +71,31 @@ test("catalog search URL includes the selected Comic Provider when present", () 
   assert.equal(url.searchParams.get("sourcePluginKey"), "mihon:mangadex");
   assert.equal(url.searchParams.get("comicProviderKey"), "mangadex:en");
   assert.equal(new URL(catalogSearchUrl("fixture:reader", "adventure")).searchParams.has("comicProviderKey"), false);
+});
+
+test("catalog browse and cover contracts retain only stable Comic Free references", () => {
+  const browseUrl = new URL(catalogBrowseUrl("mihon:mangadex", 2, "mangadex:en"));
+  assert.equal(browseUrl.pathname, "/api/v1/catalog/browse");
+  assert.equal(browseUrl.searchParams.get("page"), "2");
+  assert.equal(browseUrl.searchParams.get("comicProviderKey"), "mangadex:en");
+
+  const parsed = parseCatalogBrowseResponse({
+    items: [{
+      comicKey: "durable-comic",
+      coverRef: "opaque-cover",
+      sourcePluginKey: "mihon:mangadex",
+      sourcePluginName: "MangaDex",
+      title: "One Piece",
+    }],
+    nextPage: 3,
+  });
+  assert.equal(parsed.nextPage, 3);
+  assert.equal(parsed.items[0]?.title, "One Piece");
+  assert.throws(() => parseCatalogBrowseResponse({ items: [], nextPage: 0 }), /nextPage/);
+
+  const coverUrl = new URL(catalogCoverUrl("mihon:mangadex", "durable-comic"));
+  assert.equal(coverUrl.pathname, "/api/v1/catalog/comics/durable-comic/cover");
+  assert.equal(coverUrl.searchParams.get("sourcePluginKey"), "mihon:mangadex");
 });
 
 test("reading Source Plugin responses expose only stable Comic Free identity", () => {

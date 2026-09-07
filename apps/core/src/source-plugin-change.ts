@@ -396,7 +396,7 @@ export class FixtureSourcePluginChangeAdapter implements SourcePluginChangeAdapt
       name: currentPlugin?.name ?? "Comic Free Fixture Reader",
       pluginKey: request.source.packageName,
       providers: currentPlugin?.providers ?? (this.#installed
-        ? [{ key: "fixture.provider", language: "en", name: "Fixture Provider" }, { key: "fixture.provider.fr", language: "fr", name: "Fixture Provider" }]
+        ? [{ key: "fixture.provider", language: "en", name: "Fixture Provider" }, { key: "fixture.provider.zh-Hant", language: "zh-Hant", name: "Fixture Provider" }]
         : []),
       reasonCode: healthy ? null : "disabled",
       restartRequired: this.#restartRequiredActions.has(request.action),

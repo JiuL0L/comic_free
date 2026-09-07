@@ -6,11 +6,14 @@ import {
   FIXTURE_SOURCE_PLUGIN,
   READING_PROVIDERS_PATH,
   READER_SESSIONS_PATH,
+  catalogBrowseUrl,
+  catalogCoverUrl,
   catalogSearchUrl,
   comicChaptersUrl,
   comicDetailsUrl,
   parseApiErrorResponse,
   parseCatalogChaptersResponse,
+  parseCatalogBrowseResponse,
   parseCatalogSearchResponse,
   parseComicDetailsResponse,
   parseLibraryItemResponse,
@@ -21,6 +24,7 @@ import {
   readerPageUrl,
   sourceBindingRefreshUrl,
   type CatalogChaptersResponse,
+  type CatalogBrowseResponse,
   type CatalogSearchItem,
   type ComicDetailsResponse,
   type LibraryItem,
@@ -116,8 +120,29 @@ function providerOptionValue(provider: ReadingProvider): string {
     : JSON.stringify([provider.sourcePluginKey, provider.comicProviderKey]);
 }
 
+const displayedProviderLanguages = [
+  ["zh-Hans", "简体中文"],
+  ["zh-Hant", "繁体中文"],
+  ["en", "英语"],
+] as const;
+
+const providerLanguageLabels = new Map<string, string>(displayedProviderLanguages);
+const providerLanguageOrder = new Map<string, number>(
+  displayedProviderLanguages.map(([language], index) => [language, index]),
+);
+
+function displayedProviders(providers: ReadingProvider[]): ReadingProvider[] {
+  return providers
+    .filter((provider) => providerLanguageLabels.has(provider.language))
+    .sort(
+      (left, right) =>
+        (providerLanguageOrder.get(left.language) ?? Number.MAX_SAFE_INTEGER) -
+        (providerLanguageOrder.get(right.language) ?? Number.MAX_SAFE_INTEGER),
+    );
+}
+
 function providerLabel(provider: ReadingProvider): string {
-  return `${provider.sourcePluginName} / ${provider.name} (${provider.language})`;
+  return `${provider.sourcePluginName} / ${provider.name}（${providerLanguageLabels.get(provider.language) ?? provider.language}）`;
 }
 
 export function ReadingExperience() {
@@ -130,6 +155,7 @@ export function ReadingExperience() {
   const [providerSelection, setProviderSelection] = useState("");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
+  const [catalogAction, setCatalogAction] = useState<"browse" | "search">("browse");
   const [details, setDetails] = useState<DetailsState>({ kind: "idle" });
   const [reader, setReader] = useState<ReaderSessionResponse["session"] | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -236,14 +262,15 @@ export function ReadingExperience() {
     ).then(
       (response) => {
         if (controller.signal.aborted) return;
-        setProviders((current) => ({
-          items:
-            response.state === "error" && response.items.length === 0
-              ? current.items
-              : response.items,
-          kind: response.state,
-          message: response.message,
-        }));
+        const items = displayedProviders(response.items);
+        setProviders((current) => {
+          const retainedItems = response.state === "error" && items.length === 0 ? current.items : items;
+          return {
+            items: retainedItems,
+            kind: response.state === "success" && retainedItems.length === 0 ? "empty" : response.state,
+            message: response.message,
+          };
+        });
       },
       (error: unknown) => {
         if (!controller.signal.aborted) {
@@ -314,6 +341,7 @@ export function ReadingExperience() {
     const request = ++searchRequest.current;
     detailsRequest.current += 1;
     beginReaderRequest();
+    setCatalogAction("search");
     setSearch({ kind: "loading" });
     setDetails({ kind: "idle" });
     setReader(null);
@@ -341,6 +369,51 @@ export function ReadingExperience() {
           error instanceof RequestError
             ? error
             : new RequestError("The catalog search failed.", true),
+      });
+    }
+  };
+
+  const browseProvider = async (provider: ReadingProvider) => {
+    if (!provider.available) return;
+    const generation = readingGeneration.current;
+    const request = ++searchRequest.current;
+    detailsRequest.current += 1;
+    beginReaderRequest();
+    setCatalogAction("browse");
+    setSearch({ kind: "loading" });
+    setDetails({ kind: "idle" });
+    setReader(null);
+    try {
+      const items: CatalogSearchItem[] = [];
+      const seen = new Set<string>();
+      let page: number | null = 1;
+      while (page !== null) {
+        const response: CatalogBrowseResponse = await requestJson(
+          catalogBrowseUrl(provider.sourcePluginKey, page, provider.comicProviderKey),
+          undefined,
+          parseCatalogBrowseResponse,
+        );
+        if (generation !== readingGeneration.current || request !== searchRequest.current) return;
+        for (const item of response.items) {
+          const key = `${item.sourcePluginKey}:${item.comicKey}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            items.push(item);
+          }
+        }
+        if (response.nextPage !== null && response.nextPage <= page) {
+          throw new RequestError("The source catalog returned an invalid next page.", false);
+        }
+        page = response.nextPage;
+      }
+      setSearch(items.length === 0 ? { kind: "empty" } : { kind: "success", items });
+    } catch (error) {
+      if (generation !== readingGeneration.current || request !== searchRequest.current) return;
+      setSearch({
+        kind: "failed",
+        error: error instanceof RequestError
+          ? error
+          : new RequestError("The source catalog could not be loaded.", true),
       });
     }
   };
@@ -707,10 +780,13 @@ export function ReadingExperience() {
               value={providerSelection}
               onChange={(event) => {
                 readingGeneration.current += 1;
-                setProviderSelection(event.target.value);
+                const value = event.target.value;
+                setProviderSelection(value);
                 setSearch({ kind: "idle" });
                 setDetails({ kind: "idle" });
                 setReader(null);
+                const provider = providers.items.find((candidate) => providerOptionValue(candidate) === value);
+                if (provider?.available) void browseProvider(provider);
               }}
             >
               <option value="">选择漫画来源</option>
@@ -756,23 +832,38 @@ export function ReadingExperience() {
           </div>
         )}
 
-        {search.kind === "loading" && <p className="reading-notice">正在搜索 {selectedProvider ? providerLabel(selectedProvider) : "漫画来源"}…</p>}
-        {search.kind === "empty" && <p className="reading-notice">没有找到匹配的漫画。</p>}
+        {search.kind === "loading" && <p className="reading-notice">{catalogAction === "browse" ? `正在加载 ${selectedProvider ? providerLabel(selectedProvider) : "漫画来源"} 的漫画…` : `正在搜索 ${selectedProvider ? providerLabel(selectedProvider) : "漫画来源"}…`}</p>}
+        {search.kind === "empty" && <p className="reading-notice">{catalogAction === "browse" ? "这个来源暂时没有可显示的漫画。" : "没有找到匹配的漫画。"}</p>}
         {search.kind === "failed" && (
           <div className="reading-notice error" role="alert">
             <span>{search.error.message}</span>
-            {search.error.retryable && <button type="button" onClick={() => void runSearch()}>重新搜索</button>}
+            {search.error.retryable && <button type="button" onClick={() => catalogAction === "browse" && selectedProvider ? void browseProvider(selectedProvider) : void runSearch()}>{catalogAction === "browse" ? "重新加载" : "重新搜索"}</button>}
           </div>
         )}
         {search.kind === "success" && (
           <ul className="result-list">
             {search.items.map((item) => (
               <li key={`${item.sourcePluginKey}:${item.comicKey}`}>
-                <div>
+                <button
+                  className="comic-cover-card"
+                  type="button"
+                  aria-label={`查看详情：${item.title}`}
+                  onClick={() => void openDetails(item)}
+                >
+                  <span className="comic-cover-frame">
+                    <img
+                      alt={`${item.title} 封面`}
+                      loading="lazy"
+                      src={catalogCoverUrl(item.sourcePluginKey, item.comicKey)}
+                      onError={(event) => event.currentTarget.parentElement?.classList.add("failed")}
+                    />
+                    <span className="comic-cover-fallback">封面暂不可用</span>
+                  </span>
+                  <span className="comic-cover-copy">
                   <strong>{item.title}</strong>
                   <span>{item.sourcePluginName}</span>
-                </div>
-                <button type="button" onClick={() => void openDetails(item)}>查看详情</button>
+                  </span>
+                </button>
               </li>
             ))}
           </ul>

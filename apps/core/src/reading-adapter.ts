@@ -1,5 +1,6 @@
 import {
   FIXTURE_SOURCE_PLUGIN,
+  type CatalogBrowseResponse,
   type CatalogSearchItem,
   type ComicDetailsResponse,
   type SourceBindingReasonCode,
@@ -29,9 +30,11 @@ export interface ReadingAdapter {
     key: string;
     name: string;
   };
+  browse: (page: number) => Promise<CatalogBrowseResponse>;
   getChapters: (comicKey: string) => Promise<ReadingChapter[]>;
   getDetails: (comicKey: string) => Promise<ComicDetailsResponse["comic"]>;
   readPage: (pageKey: string, signal?: AbortSignal) => Promise<ReadingPage>;
+  readCover: (comicKey: string, signal?: AbortSignal) => Promise<ReadingPage>;
   resolveChapter: (comicKey: string, chapterKey: string) => Promise<ResolvedChapter>;
   search: (query: string) => Promise<CatalogSearchItem[]>;
 }
@@ -140,6 +143,22 @@ export class FixtureReadingAdapter implements ReadingAdapter {
     ];
   }
 
+  async browse(page: number): Promise<CatalogBrowseResponse> {
+    return page === 1
+      ? { items: [await this.catalogItem()], nextPage: null }
+      : { items: [], nextPage: null };
+  }
+
+  private async catalogItem(): Promise<CatalogSearchItem> {
+    return {
+      comicKey: this.#comic.comicKey,
+      coverRef: this.#comic.coverRef,
+      sourcePluginKey: this.#comic.sourcePluginKey,
+      sourcePluginName: this.#comic.sourcePluginName,
+      title: this.#comic.title,
+    };
+  }
+
   async getDetails(comicKey: string): Promise<ComicDetailsResponse["comic"]> {
     if (comicKey !== this.#comic.comicKey) {
       throw new ReadingAdapterError(
@@ -183,8 +202,13 @@ export class FixtureReadingAdapter implements ReadingAdapter {
       );
     }
     return {
-      bytes: this.comicProviderKey === "fixture.provider" ? Buffer.from(bytes) : Buffer.from(bytes.toString("utf8").replace("COMIC FREE FIXTURE", "COMIC FREE FR FIXTURE"), "utf8"),
+      bytes: this.comicProviderKey === "fixture.provider" ? Buffer.from(bytes) : Buffer.from(bytes.toString("utf8").replace("COMIC FREE FIXTURE", "COMIC FREE ZH-HANT FIXTURE"), "utf8"),
       contentType: "image/svg+xml; charset=utf-8",
     };
+  }
+
+  async readCover(comicKey: string): Promise<ReadingPage> {
+    await this.getDetails(comicKey);
+    return this.readPage("page/one");
   }
 }
