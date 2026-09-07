@@ -206,6 +206,7 @@ export function ReadingExperience({
   const readingGeneration = useRef(0);
   const searchRequest = useRef(0);
   const detailsRequest = useRef(0);
+  const detailsPanel = useRef<HTMLDivElement>(null);
   const readerRequest = useRef(0);
   const deletedIds = useRef(new Set<string>());
   const libraryItems = useRef<LibraryItem[]>([]);
@@ -430,6 +431,13 @@ export function ReadingExperience({
       });
     }
   };
+
+  useEffect(() => {
+    if (details.kind !== "idle" && visibleSection === "discover") {
+      detailsPanel.current?.focus();
+      detailsPanel.current?.scrollIntoView({ block: "start" });
+    }
+  }, [details.kind, visibleSection]);
 
   const openDetails = async (item: CatalogSearchItem) => {
     const generation = readingGeneration.current;
@@ -793,6 +801,7 @@ export function ReadingExperience({
       >
         <p className="eyebrow">READ / COMIC CATALOG</p>
         <h2 id="find-comic-heading">找漫画</h2>
+        <div hidden={details.kind !== "idle"}>
         <div className="search-controls">
           <label>
             漫画来源
@@ -890,7 +899,14 @@ export function ReadingExperience({
           </ul>
         )}
 
-        {details.kind === "loading" && <p className="reading-notice">正在加载漫画详情…</p>}
+        </div>
+        {details.kind !== "idle" && <div ref={detailsPanel} tabIndex={-1}>
+          <button type="button" onClick={() => {
+            detailsRequest.current += 1;
+            beginReaderRequest();
+            setDetails({ kind: "idle" });
+          }}>返回漫画列表</button>
+        {details.kind === "loading" && <p className="reading-notice" role="status">正在加载漫画详情…</p>}
         {details.kind === "failed" && <p className="reading-notice error" role="alert">{details.error}</p>}
         {details.kind === "success" && (
           <article className="comic-details">
@@ -904,6 +920,7 @@ export function ReadingExperience({
             ))}
           </article>
         )}
+        </div>}
       </section>
 
       <section

@@ -71,6 +71,11 @@ test("点击漫画封面和章节后可在竖向滑动与左右翻页间切换",
 
   await page.getByLabel("漫画来源", { exact: true }).selectOption("fixture:reader");
   await page.getByRole("button", { name: "查看详情：Deterministic Adventure" }).click();
+  await expect(page.getByRole("button", { name: "查看详情：Deterministic Adventure" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" })).toBeInViewport();
+  await page.getByRole("button", { name: "返回漫画列表" }).click();
+  await expect(page.getByRole("button", { name: "查看详情：Deterministic Adventure" })).toBeVisible();
+  await page.getByRole("button", { name: "查看详情：Deterministic Adventure" }).click();
   await expect(page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" })).toBeVisible();
   await page.getByRole("button", { name: "阅读 Chapter 1 · The Local Beginning" }).click();
 

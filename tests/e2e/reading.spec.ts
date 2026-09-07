@@ -528,6 +528,7 @@ test("keeps the latest same-Provider search, details, and chapter selection when
 
   await page.locator(".result-list").getByRole("button", { name: "查看详情" }).first().click();
   await olderDetailsRequested;
+  await page.getByRole("button", { name: "返回漫画列表" }).click();
   await page.locator(".result-list").getByRole("button", { name: "查看详情" }).nth(1).click();
   await expect(page.getByRole("heading", { name: "Latest selection" })).toBeVisible();
   releaseOlderDetails();
